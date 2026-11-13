@@ -2,247 +2,322 @@
 <html lang="pt-BR">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
     <title>isbackup</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%235ac8fa'/%3E%3Cstop offset='1' stop-color='%23007aff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Cpath d='M8 11h16v3H8zM9.5 14h13v8a1.5 1.5 0 0 1-1.5 1.5H11A1.5 1.5 0 0 1 9.5 22zM13.5 17.5h5' fill='none' stroke='white' stroke-width='1.8' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
+    <!-- Iconografia no estilo SF Symbols (traço arredondado), referenciada via <use href="#i-..."> -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="i-archive" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1.5" /><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4" /></symbol>
+      <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="7.5" ry="3" /><path d="M4.5 5.5v13c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3v-13M4.5 12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3" /></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.6l2 2.2h7.4A2.5 2.5 0 0 1 21 9.7v7.8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z" /></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.8v14.4a1 1 0 0 0 1.5.86l11.6-7.2a1 1 0 0 0 0-1.72L8.5 3.94A1 1 0 0 0 7 4.8z" /></symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="3" /></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8.5 5v14M15.5 5v14" /></symbol>
+      <symbol id="i-tray" viewBox="0 0 24 24"><path d="M3 13.5l2.6-7.2A2 2 0 0 1 7.5 5h9a2 2 0 0 1 1.9 1.3l2.6 7.2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 13.5h5l1.5 2.5h5l1.5-2.5h5" /></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.2 2" /></symbol>
+      <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 6.5h16M9.5 6.5V4.8A1.8 1.8 0 0 1 11.3 3h1.4a1.8 1.8 0 0 1 1.8 1.8v1.7M6 6.5l.9 12.6A2 2 0 0 0 8.9 21h6.2a2 2 0 0 0 2-1.9L18 6.5M10 10.5v6M14 10.5v6" /></symbol>
+      <symbol id="i-ellipsis" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.9" /><circle cx="12" cy="12" r="1.9" /><circle cx="18.5" cy="12" r="1.9" /></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11.5A8 8 0 0 0 6.1 6.6L4 8.7M4 4v4.7h4.7M4 12.5a8 8 0 0 0 13.9 4.9l2.1-2.1M20 20v-4.7h-4.7" /></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14" /></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" /></symbol>
+      <symbol id="i-checkmark-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M8 12.3l2.8 2.8L16.2 9.5" /></symbol>
+      <symbol id="i-xmark" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18" /></symbol>
+      <symbol id="i-warning" viewBox="0 0 24 24"><path d="M10.3 4.3 2.9 17.2A2 2 0 0 0 4.6 20h14.8a2 2 0 0 0 1.7-2.8L13.7 4.3a2 2 0 0 0-3.4 0zM12 9.5v4M12 16.8v.2" /></symbol>
+      <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6" /></symbol>
+      <symbol id="i-exclamation" viewBox="0 0 24 24"><path d="M12 5v9M12 18.5v.5" /></symbol>
+      <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4" /></symbol>
+      <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2.5 4.5 13.5H12l-1 8 8.5-11H12z" /></symbol>
+      <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1" /></symbol>
+      <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h4" /></symbol>
+    </svg>
+
     <header class="topbar">
-      <h1>isbackup</h1>
+      <div class="brand">
+        <div class="app-icon" aria-hidden="true"><svg class="icon"><use href="#i-archive" /></svg></div>
+        <h1>isbackup</h1>
+      </div>
       <div class="topbar-actions">
-        <span id="cron-badge" class="badge">carregando…</span>
-        <button id="cron-toggle-btn" class="btn btn-ghost"></button>
+        <span id="cron-badge" class="badge">Carregando…</span>
+        <button id="cron-toggle-btn" class="btn btn-plain btn-sm"></button>
+        <button id="refresh-btn" class="btn btn-icon tooltip-bottom" data-tooltip="Atualizar" aria-label="Atualizar">
+          <svg class="icon"><use href="#i-refresh" /></svg>
+        </button>
         <div class="card-menu" id="new-job-menu">
-          <button type="button" id="new-job-btn" class="btn btn-ghost" data-action="toggle-menu">+ Novo job</button>
+          <button type="button" id="new-job-btn" class="btn btn-tinted" data-action="toggle-menu">
+            <svg class="icon"><use href="#i-plus" /></svg><span>Novo job</span>
+          </button>
           <div class="dropdown-menu" data-menu hidden>
-            <button type="button" data-action="new-database">Banco de dados</button>
-            <button type="button" data-action="new-files">Arquivos (via SFTP/FTP)</button>
+            <button type="button" data-action="new-database">Banco de dados <svg class="icon"><use href="#i-database" /></svg></button>
+            <button type="button" data-action="new-files">Arquivos (SFTP/FTP) <svg class="icon"><use href="#i-folder" /></svg></button>
           </div>
         </div>
-        <button id="run-all-btn" class="btn btn-primary">Executar todos agora</button>
-        <button id="refresh-btn" class="btn btn-ghost tooltip-bottom" data-tooltip="Atualizar">⟳ Atualizar</button>
+        <button id="run-all-btn" class="btn btn-primary">
+          <svg class="icon"><use href="#i-play" /></svg><span>Executar <span class="btn-label-wide">todos agora</span></span>
+        </button>
       </div>
     </header>
 
     <main>
+      <div class="page-header">
+        <h2 class="page-title">Backups</h2>
+        <p class="page-subtitle" id="summary"></p>
+      </div>
       <div id="jobs" class="jobs-grid">
         <p class="muted">Carregando jobs…</p>
       </div>
     </main>
 
-    <div id="toast" class="toast" hidden></div>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
+    <!-- Folha: criar/editar job -->
     <div id="job-modal-overlay" class="modal-overlay" hidden>
-      <div class="modal">
-        <h2 id="job-modal-title">Novo job</h2>
-        <form id="job-form">
-          <div class="form-row">
-            <label for="field-name">Nome</label>
-            <input id="field-name" name="name" required pattern="[A-Za-z0-9_\-]+" placeholder="ex: producao" />
-          </div>
-          <div class="form-row">
-            <label for="field-type">Tipo de job</label>
-            <select id="field-type" name="type">
-              <option value="database" selected>Banco de dados (mysqldump)</option>
-              <option value="files">Arquivos (via SFTP/FTP)</option>
-            </select>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="job-modal-title">
+        <form id="job-form" novalidate>
+          <div class="sheet-header">
+            <h2 id="job-modal-title">Novo job</h2>
+            <button type="button" class="sheet-close" data-action="cancel" aria-label="Fechar"><svg class="icon"><use href="#i-xmark" /></svg></button>
           </div>
 
-          <div id="field-database-fields">
-            <div class="form-row form-row-split">
-              <div>
-                <label for="field-host">Host</label>
-                <input id="field-host" name="host" placeholder="localhost" />
+          <div class="sheet-body">
+            <div class="form-row">
+              <label for="field-name">Nome</label>
+              <input id="field-name" name="name" required pattern="[A-Za-z0-9_\-]+" placeholder="ex: producao" autocomplete="off" />
+            </div>
+            <div class="form-row">
+              <span class="form-label">Tipo</span>
+              <div class="segmented" role="radiogroup" aria-label="Tipo de job">
+                <label class="segmented-option"><input type="radio" name="type" value="database" checked /><span><svg class="icon"><use href="#i-database" /></svg>Banco de dados</span></label>
+                <label class="segmented-option"><input type="radio" name="type" value="files" /><span><svg class="icon"><use href="#i-folder" /></svg>Arquivos</span></label>
               </div>
-              <div>
-                <label for="field-port">Porta</label>
-                <input id="field-port" name="port" type="number" placeholder="3306" />
-              </div>
             </div>
-            <div class="form-row">
-              <label for="field-user">Usuario</label>
-              <input id="field-user" name="user" />
-            </div>
-            <div class="form-row">
-              <label for="field-password">Senha</label>
-              <input id="field-password" name="password" type="password" autocomplete="new-password" />
-              <p class="field-hint" id="password-hint">Fica cifrada dentro do config.yaml (chave em .env).</p>
-            </div>
-            <div class="form-row test-connection-row">
-              <button type="button" id="test-connection-btn-database" class="btn btn-ghost test-connection-btn">Testar conexao</button>
-              <p class="field-hint test-connection-result" id="test-connection-result-database" hidden></p>
-            </div>
-            <div class="form-row">
-              <span class="form-label">Bancos</span>
-              <label class="radio-label"><input type="radio" name="dbMode" value="all" checked /> Todos os bancos</label>
-              <label class="radio-label"><input type="radio" name="dbMode" value="specific" /> Bancos especificos</label>
-              <input id="field-databases" name="databases" placeholder="banco1, banco2" disabled />
-            </div>
-          </div>
 
-          <div id="field-files-fields" hidden>
+            <div id="field-database-fields">
+              <p class="form-section-title">Conexão</p>
+              <div class="form-row form-row-split">
+                <div>
+                  <label for="field-host">Host</label>
+                  <input id="field-host" name="host" placeholder="localhost" autocomplete="off" />
+                </div>
+                <div class="field-narrow">
+                  <label for="field-port">Porta</label>
+                  <input id="field-port" name="port" type="number" placeholder="3306" />
+                </div>
+              </div>
+              <div class="form-row">
+                <label for="field-user">Usuário</label>
+                <input id="field-user" name="user" autocomplete="off" />
+              </div>
+              <div class="form-row">
+                <label for="field-password">Senha</label>
+                <input id="field-password" name="password" type="password" autocomplete="new-password" />
+                <p class="field-hint" id="password-hint">Fica cifrada dentro do config.yaml (chave em .env).</p>
+              </div>
+              <div class="form-row test-connection-row">
+                <button type="button" id="test-connection-btn-database" class="btn btn-tinted btn-sm test-connection-btn"></button>
+                <p class="field-hint test-connection-result" id="test-connection-result-database" hidden></p>
+              </div>
+              <div class="form-row">
+                <span class="form-label">Bancos</span>
+                <div class="segmented" role="radiogroup" aria-label="Bancos">
+                  <label class="segmented-option"><input type="radio" name="dbMode" value="all" checked /><span>Todos</span></label>
+                  <label class="segmented-option"><input type="radio" name="dbMode" value="specific" /><span>Específicos</span></label>
+                </div>
+                <input id="field-databases" name="databases" placeholder="banco1, banco2" disabled />
+              </div>
+            </div>
+
+            <div id="field-files-fields" hidden>
+              <p class="form-section-title">Origem remota</p>
+              <div class="form-row">
+                <div class="segmented" role="radiogroup" aria-label="Protocolo">
+                  <label class="segmented-option"><input type="radio" name="fileSourceProtocol" value="sftp" checked /><span>SFTP</span></label>
+                  <label class="segmented-option"><input type="radio" name="fileSourceProtocol" value="ftp" /><span>FTP</span></label>
+                </div>
+              </div>
+              <div class="form-row form-row-split">
+                <div>
+                  <label for="field-file-host">Host</label>
+                  <input id="field-file-host" name="fileSourceHost" placeholder="host remoto" autocomplete="off" />
+                </div>
+                <div class="field-narrow">
+                  <label for="field-file-port">Porta</label>
+                  <input id="field-file-port" name="fileSourcePort" type="number" placeholder="22" />
+                </div>
+              </div>
+              <div class="form-row">
+                <label for="field-file-user">Usuário</label>
+                <input id="field-file-user" name="fileSourceUser" autocomplete="off" />
+              </div>
+              <div class="form-row">
+                <label for="field-file-password">Senha</label>
+                <input id="field-file-password" name="fileSourcePassword" type="password" autocomplete="new-password" />
+                <p class="field-hint" id="file-password-hint">Fica cifrada dentro do config.yaml (mesma chave em .env).</p>
+              </div>
+              <div class="form-row">
+                <label for="field-file-remote-dir">Diretório remoto</label>
+                <input id="field-file-remote-dir" name="fileSourceRemoteDir" placeholder="/" />
+              </div>
+              <div class="form-row" id="field-file-secure-row" hidden>
+                <label class="switch-row">Usar FTPS (conexão segura)<input id="field-file-secure" name="fileSourceSecure" type="checkbox" class="switch" /></label>
+              </div>
+              <div class="form-row test-connection-row">
+                <button type="button" id="test-connection-btn-files" class="btn btn-tinted btn-sm test-connection-btn"></button>
+                <p class="field-hint test-connection-result" id="test-connection-result-files" hidden></p>
+              </div>
+
+              <p class="form-section-title">Filtros</p>
+              <div class="form-row form-row-split">
+                <div>
+                  <label for="field-file-pattern">Padrão de nome</label>
+                  <input id="field-file-pattern" name="fileSourcePattern" placeholder="* (ex: *.log)" />
+                </div>
+                <div>
+                  <label for="field-file-name-contains">Nome contém</label>
+                  <input id="field-file-name-contains" name="fileSourceNameContains" placeholder="opcional" />
+                </div>
+              </div>
+              <div class="form-row">
+                <label for="field-file-modified-days">Modificados nos últimos (dias)</label>
+                <input id="field-file-modified-days" name="fileSourceModifiedWithinDays" type="number" min="1" placeholder="opcional" />
+                <p class="field-hint">
+                  Só os arquivos que baterem com todos os filtros preenchidos são baixados e compactados num .tar.gz.
+                </p>
+              </div>
+            </div>
+
+            <p class="form-section-title">Agendamento</p>
             <div class="form-row">
-              <label for="field-file-protocol">Protocolo</label>
-              <select id="field-file-protocol" name="fileSourceProtocol">
-                <option value="sftp" selected>SFTP</option>
-                <option value="ftp">FTP</option>
+              <label for="field-schedule-mode">Rotina</label>
+              <select id="field-schedule-mode" name="scheduleMode">
+                <option value="hourly">A cada hora</option>
+                <option value="everyNHours">A cada N horas</option>
+                <option value="daily" selected>Diária</option>
+                <option value="weekdays">Dias específicos da semana</option>
+                <option value="weekly">Semanal</option>
+                <option value="monthly">Mensal</option>
+                <option value="custom">Personalizada (cron)</option>
               </select>
+              <div class="schedule-detail-row" id="field-hourly-window-row" hidden>
+                <span>das</span>
+                <input id="field-hourly-start" type="number" min="0" max="23" value="0" />
+                <span>às</span>
+                <input id="field-hourly-end" type="number" min="0" max="23" value="23" />
+                <span>h</span>
+              </div>
+              <div class="schedule-hours-row" id="field-schedule-hours-row" hidden>
+                <span>a cada</span>
+                <input id="field-schedule-hours" name="scheduleHours" type="number" min="1" max="23" value="6" />
+                <span>horas</span>
+              </div>
+              <div class="schedule-detail-row" id="field-everyn-window-row" hidden>
+                <span>das</span>
+                <input id="field-everyn-start" type="number" min="0" max="23" value="0" />
+                <span>às</span>
+                <input id="field-everyn-end" type="number" min="0" max="23" value="23" />
+                <span>h</span>
+              </div>
+              <p class="field-hint" id="hourly-window-hint" hidden>
+                0 a 23 roda o dia todo. Início maior que o fim funciona (ex: 22 às 6 = madrugada). Início igual ao
+                fim = um horário só.
+              </p>
+              <div class="weekday-picker-row" id="field-weekday-picker-row" hidden>
+                <div class="weekday-picker">
+                  <button type="button" class="weekday-btn" data-day="0" aria-pressed="false">Dom</button>
+                  <button type="button" class="weekday-btn" data-day="1" aria-pressed="false">Seg</button>
+                  <button type="button" class="weekday-btn" data-day="2" aria-pressed="false">Ter</button>
+                  <button type="button" class="weekday-btn" data-day="3" aria-pressed="false">Qua</button>
+                  <button type="button" class="weekday-btn" data-day="4" aria-pressed="false">Qui</button>
+                  <button type="button" class="weekday-btn" data-day="5" aria-pressed="false">Sex</button>
+                  <button type="button" class="weekday-btn" data-day="6" aria-pressed="false">Sáb</button>
+                </div>
+                <p class="field-hint" id="weekday-picker-hint"></p>
+              </div>
+              <div class="schedule-detail-row" id="field-weekdays-row" hidden>
+                <span>às</span>
+                <input id="field-weekdays-hour" type="number" min="0" max="23" value="3" />
+                <span>h</span>
+              </div>
+              <div class="schedule-detail-row" id="field-daily-row" hidden>
+                <span>às</span>
+                <input id="field-daily-hour" type="number" min="0" max="23" value="3" />
+                <span>h</span>
+              </div>
+              <div class="schedule-detail-row" id="field-weekly-row" hidden>
+                <span>toda</span>
+                <select id="field-weekly-day">
+                  <option value="0">domingo</option>
+                  <option value="1">segunda</option>
+                  <option value="2">terça</option>
+                  <option value="3">quarta</option>
+                  <option value="4">quinta</option>
+                  <option value="5">sexta</option>
+                  <option value="6">sábado</option>
+                </select>
+                <span>às</span>
+                <input id="field-weekly-hour" type="number" min="0" max="23" value="3" />
+                <span>h</span>
+              </div>
+              <div class="schedule-detail-row" id="field-monthly-row" hidden>
+                <span>todo dia</span>
+                <input id="field-monthly-day" type="number" min="1" max="31" value="1" />
+                <span>às</span>
+                <input id="field-monthly-hour" type="number" min="0" max="23" value="3" />
+                <span>h</span>
+              </div>
+              <input id="field-schedule-custom" name="scheduleCustom" placeholder="0 3 * * *" hidden />
             </div>
             <div class="form-row form-row-split">
-              <div>
-                <label for="field-file-host">Host</label>
-                <input id="field-file-host" name="fileSourceHost" placeholder="host remoto" />
+              <div class="field-narrow">
+                <label for="field-retention">Retenção (dias)</label>
+                <input id="field-retention" name="retentionDays" type="number" min="0" placeholder="7" />
               </div>
-              <div>
-                <label for="field-file-port">Porta</label>
-                <input id="field-file-port" name="fileSourcePort" type="number" placeholder="22" />
-              </div>
-            </div>
-            <div class="form-row">
-              <label for="field-file-user">Usuario</label>
-              <input id="field-file-user" name="fileSourceUser" />
-            </div>
-            <div class="form-row">
-              <label for="field-file-password">Senha</label>
-              <input id="field-file-password" name="fileSourcePassword" type="password" autocomplete="new-password" />
-              <p class="field-hint" id="file-password-hint">Fica cifrada dentro do config.yaml (mesma chave em .env).</p>
-            </div>
-            <div class="form-row">
-              <label for="field-file-remote-dir">Diretorio remoto</label>
-              <input id="field-file-remote-dir" name="fileSourceRemoteDir" placeholder="/" />
-            </div>
-            <div class="form-row" id="field-file-secure-row" hidden>
-              <label><input id="field-file-secure" name="fileSourceSecure" type="checkbox" /> Usar FTPS (conexao segura)</label>
-            </div>
-            <div class="form-row test-connection-row">
-              <button type="button" id="test-connection-btn-files" class="btn btn-ghost test-connection-btn">Testar conexao</button>
-              <p class="field-hint test-connection-result" id="test-connection-result-files" hidden></p>
-            </div>
-            <div class="form-row form-row-split">
-              <div>
-                <label for="field-file-pattern">Padrao de nome</label>
-                <input id="field-file-pattern" name="fileSourcePattern" placeholder="* (ex: *.log)" />
-              </div>
-              <div>
-                <label for="field-file-name-contains">Nome contem</label>
-                <input id="field-file-name-contains" name="fileSourceNameContains" placeholder="opcional" />
+              <div class="form-row-checkbox" id="field-gzip-row">
+                <label class="switch-row">Comprimir (gzip)<input id="field-gzip" name="gzip" type="checkbox" class="switch" checked /></label>
               </div>
             </div>
-            <div class="form-row">
-              <label for="field-file-modified-days">Modificados nos ultimos (dias)</label>
-              <input id="field-file-modified-days" name="fileSourceModifiedWithinDays" type="number" min="1" placeholder="opcional" />
-            </div>
-            <p class="field-hint">
-              So arquivos que baterem com todos os filtros preenchidos sao baixados e compactados
-              num .tar.gz. Deixe em branco os que nao quiser usar.
-            </p>
+            <p class="schedule-preview" id="schedule-preview" hidden></p>
           </div>
 
-          <div class="form-row">
-            <label for="field-schedule-mode">Rotina</label>
-            <select id="field-schedule-mode" name="scheduleMode">
-              <option value="hourly">A cada hora</option>
-              <option value="everyNHours">A cada N horas (mais de 1x por dia)</option>
-              <option value="daily" selected>Diaria</option>
-              <option value="weekdays">Dias especificos da semana</option>
-              <option value="weekly">Semanal</option>
-              <option value="monthly">Mensal</option>
-              <option value="custom">Personalizada (cron)</option>
-            </select>
-            <div class="schedule-detail-row" id="field-hourly-window-row" hidden>
-              <span>das</span>
-              <input id="field-hourly-start" type="number" min="0" max="23" value="0" />
-              <span>as</span>
-              <input id="field-hourly-end" type="number" min="0" max="23" value="23" />
-              <span>h</span>
-            </div>
-            <div class="schedule-hours-row" id="field-schedule-hours-row" hidden>
-              <span>a cada</span>
-              <input id="field-schedule-hours" name="scheduleHours" type="number" min="1" max="23" value="6" />
-              <span>horas</span>
-            </div>
-            <div class="schedule-detail-row" id="field-everyn-window-row" hidden>
-              <span>das</span>
-              <input id="field-everyn-start" type="number" min="0" max="23" value="0" />
-              <span>as</span>
-              <input id="field-everyn-end" type="number" min="0" max="23" value="23" />
-              <span>h</span>
-            </div>
-            <p class="field-hint" id="hourly-window-hint" hidden>
-              Deixe 0 a 23 pra rodar o dia todo. Inicio maior que o fim funciona (ex: 22 as 6 =
-              janela durante a madrugada). Inicio igual ao fim = um horario especifico so.
-            </p>
-            <div class="weekday-picker-row" id="field-weekday-picker-row" hidden>
-              <div class="weekday-picker">
-                <button type="button" class="weekday-btn" data-day="0" aria-pressed="false">Dom</button>
-                <button type="button" class="weekday-btn" data-day="1" aria-pressed="false">Seg</button>
-                <button type="button" class="weekday-btn" data-day="2" aria-pressed="false">Ter</button>
-                <button type="button" class="weekday-btn" data-day="3" aria-pressed="false">Qua</button>
-                <button type="button" class="weekday-btn" data-day="4" aria-pressed="false">Qui</button>
-                <button type="button" class="weekday-btn" data-day="5" aria-pressed="false">Sex</button>
-                <button type="button" class="weekday-btn" data-day="6" aria-pressed="false">Sab</button>
-              </div>
-              <p class="field-hint" id="weekday-picker-hint"></p>
-            </div>
-            <div class="schedule-detail-row" id="field-weekdays-row" hidden>
-              <span>as</span>
-              <input id="field-weekdays-hour" type="number" min="0" max="23" value="3" />
-              <span>h</span>
-            </div>
-            <div class="schedule-detail-row" id="field-daily-row" hidden>
-              <span>as</span>
-              <input id="field-daily-hour" type="number" min="0" max="23" value="3" />
-              <span>h</span>
-            </div>
-            <div class="schedule-detail-row" id="field-weekly-row" hidden>
-              <span>toda</span>
-              <select id="field-weekly-day">
-                <option value="0">domingo</option>
-                <option value="1">segunda</option>
-                <option value="2">terca</option>
-                <option value="3">quarta</option>
-                <option value="4">quinta</option>
-                <option value="5">sexta</option>
-                <option value="6">sabado</option>
-              </select>
-              <span>as</span>
-              <input id="field-weekly-hour" type="number" min="0" max="23" value="3" />
-              <span>h</span>
-            </div>
-            <div class="schedule-detail-row" id="field-monthly-row" hidden>
-              <span>todo dia</span>
-              <input id="field-monthly-day" type="number" min="1" max="31" value="1" />
-              <span>as</span>
-              <input id="field-monthly-hour" type="number" min="0" max="23" value="3" />
-              <span>h</span>
-            </div>
-            <input id="field-schedule-custom" name="scheduleCustom" placeholder="0 3 * * *" hidden />
-          </div>
-          <div class="form-row form-row-split">
-            <div>
-              <label for="field-retention">Retencao (dias)</label>
-              <input id="field-retention" name="retentionDays" type="number" min="0" placeholder="7" />
-            </div>
-            <div class="form-row-checkbox" id="field-gzip-row">
-              <label><input id="field-gzip" name="gzip" type="checkbox" checked /> Comprimir (gzip)</label>
-            </div>
-          </div>
-          <p class="schedule-preview" id="schedule-preview" hidden></p>
-          <p class="modal-error error-line" id="job-form-error" hidden></p>
           <div class="modal-actions">
-            <button type="button" class="btn btn-ghost" data-action="cancel">Cancelar</button>
+            <p class="modal-error error-line" id="job-form-error" hidden></p>
+            <p class="footer-hint" id="save-hint">Teste a conexão para liberar o Salvar.</p>
+            <button type="button" class="btn" data-action="cancel">Cancelar</button>
             <button type="submit" class="btn btn-primary">Salvar</button>
           </div>
         </form>
       </div>
     </div>
 
+    <!-- Folha: arquivos / histórico -->
     <div id="detail-modal-overlay" class="modal-overlay" hidden>
-      <div class="modal modal-wide">
-        <h2 id="detail-modal-title">Detalhes</h2>
-        <div id="detail-modal-body"><p class="muted">Carregando…</p></div>
-        <div class="modal-actions">
-          <button type="button" class="btn btn-ghost" data-action="close-detail">Fechar</button>
+      <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="detail-modal-title">
+        <div class="sheet-header">
+          <h2 id="detail-modal-title">Detalhes</h2>
+          <button type="button" class="sheet-close" data-action="close-detail" aria-label="Fechar"><svg class="icon"><use href="#i-xmark" /></svg></button>
+        </div>
+        <div class="sheet-body" id="detail-modal-body"><p class="muted">Carregando…</p></div>
+      </div>
+    </div>
+
+    <!-- Alerta de confirmação (substitui o confirm() nativo) -->
+    <div id="confirm-overlay" class="modal-overlay" hidden>
+      <div class="modal alert" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+        <div class="alert-glyph"><svg class="icon"><use href="#i-warning" /></svg></div>
+        <h2 id="confirm-title"></h2>
+        <p id="confirm-message"></p>
+        <div class="alert-actions">
+          <button type="button" class="btn" data-confirm="cancel">Cancelar</button>
+          <button type="button" class="btn btn-primary" data-confirm="ok">OK</button>
         </div>
       </div>
     </div>

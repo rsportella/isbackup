@@ -3,6 +3,44 @@ const state = {
   polling: null,
 };
 
+/** Icone do sprite SVG definido no index.html (estilo SF Symbols). */
+function icon(name) {
+  return `<svg class="icon" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
+}
+
+// Alerta de confirmacao no estilo do sistema (substitui o confirm() nativo, que nao segue o
+// visual nem o tema escuro). Resolve true/false.
+const confirmOverlay = document.getElementById("confirm-overlay");
+let confirmResolve = null;
+
+function confirmDialog({ title, message, confirmLabel = "OK", destructive = false }) {
+  document.getElementById("confirm-title").textContent = title;
+  document.getElementById("confirm-message").textContent = message || "";
+  const okBtn = confirmOverlay.querySelector('[data-confirm="ok"]');
+  okBtn.textContent = confirmLabel;
+  okBtn.className = destructive ? "btn btn-danger btn-filled" : "btn btn-primary";
+  confirmOverlay.querySelector(".alert").classList.toggle("alert-destructive", destructive);
+  confirmOverlay.hidden = false;
+  okBtn.focus();
+  return new Promise((resolve) => {
+    confirmResolve = resolve;
+  });
+}
+
+function closeConfirm(result) {
+  if (confirmOverlay.hidden) return;
+  confirmOverlay.hidden = true;
+  const resolve = confirmResolve;
+  confirmResolve = null;
+  if (resolve) resolve(result);
+}
+
+confirmOverlay.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-confirm]");
+  if (btn) closeConfirm(btn.dataset.confirm === "ok");
+  else if (e.target === confirmOverlay) closeConfirm(false);
+});
+
 function formatBytes(bytes) {
   if (!bytes) return "0 B";
   const units = ["B", "KB", "MB", "GB"];
@@ -74,6 +112,13 @@ function countdownRingHtml(job) {
   const runningStyle = isRunning
     ? `stroke-dasharray:${RING_CIRCUMFERENCE};stroke-dashoffset:${RING_CIRCUMFERENCE * (1 - runInfo.fraction)};animation-delay:-${Date.now() % RING_RUNNING_BLINK_MS}ms`
     : "";
+  const caption = isRunning
+    ? runInfo.fraction < 1 || job.runState.progress
+      ? "progresso"
+      : ""
+    : !job.paused && job.nextRun
+      ? "próximo"
+      : "";
 
   return `
     <div class="next-run-ring-wrap${isRunning ? " running" : ""}"${runInfo?.tooltip ? ` data-tooltip="${escapeHtml(runInfo.tooltip)}"` : ""}>
@@ -87,9 +132,12 @@ function countdownRingHtml(job) {
               : ""
         }
       </svg>
-      <div class="ring-center-label${job.paused ? " ring-center-muted" : ""}"${
-        !isRunning && !job.paused && job.nextRun ? ` data-next-run="${job.nextRun}"` : ""
-      }>${escapeHtml(centerLabel)}</div>
+      <div class="ring-center">
+        <div class="ring-center-label${job.paused ? " ring-center-muted" : ""}"${
+          !isRunning && !job.paused && job.nextRun ? ` data-next-run="${job.nextRun}"` : ""
+        }>${escapeHtml(centerLabel)}</div>
+        ${caption ? `<div class="ring-center-caption">${caption}</div>` : ""}
+      </div>
     </div>
   `;
 }
@@ -110,7 +158,7 @@ function sizeTrendBadgeHtml(job) {
   const diff = trend.lastSize - trend.previousSize;
   const detail = `${formatBytes(trend.previousSize)} → ${formatBytes(trend.lastSize)} (${formatSizeDelta(diff)})`;
   const tooltip = ok ? `Cresceu: ${detail}` : `Nao cresceu (verifique o backup): ${detail}`;
-  return `<span class="size-trend-badge size-trend-${ok ? "ok" : "warning"}" data-tooltip="${escapeHtml(tooltip)}">${ok ? "▲" : "!"}</span>`;
+  return `<span class="size-trend-badge size-trend-${ok ? "ok" : "warning"} tooltip-left" tabindex="0" data-tooltip="${escapeHtml(tooltip)}" aria-label="${escapeHtml(tooltip)}">${icon(ok ? "arrow-up" : "exclamation")}</span>`;
 }
 
 function formatDateTime(iso) {
@@ -133,8 +181,12 @@ function escapeHtml(str) {
 let toastTimer = null;
 function showToast(message, isError = false) {
   const el = document.getElementById("toast");
-  el.textContent = message;
+  el.innerHTML = `${icon(isError ? "warning" : "checkmark-circle")}<span></span>`;
+  el.querySelector("span").textContent = message;
   el.className = "toast" + (isError ? " toast-error" : "");
+  // Reinicia a animacao de entrada mesmo se o toast anterior ainda estiver visivel.
+  el.hidden = true;
+  void el.offsetWidth;
   el.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
@@ -163,16 +215,34 @@ async function loadJobs() {
   try {
     state.jobs = await apiFetch("/api/jobs");
   } catch (err) {
-    document.getElementById("jobs").innerHTML = `<p class="error-line">${escapeHtml(err.message)}</p>`;
+    document.getElementById("jobs").innerHTML = `
+      <div class="empty-state">
+        <div class="empty-glyph">${icon("warning")}</div>
+        <h3>Não foi possível carregar os jobs</h3>
+        <p class="error-line">${escapeHtml(err.message)}</p>
+      </div>`;
+    document.getElementById("summary").textContent = "";
     return;
   }
+  renderSummary();
   // Nao redesenha a grade inteira (render() troca o innerHTML de #jobs) enquanto um dropdown
   // estiver aberto — o polling roda a cada 1.5s sempre que algo esta rodando/atrasado, e se isso
   // cair bem no meio de um clique no "⋮" o menu recem-aberto e destruido/recriado fechado, sem
   // o usuario conseguir usa-lo. Os dados de state.jobs ficam atualizados de qualquer forma; so o
   // redesenho espera o menu fechar (o proximo poll, ou a proxima acao, pega o resto).
-  if (!document.querySelector(".dropdown-menu:not([hidden])")) {
+  //
+  // Tambem so redesenha quando os dados mudaram (ou algo esta rodando, pro tempo decorrido
+  // andar): com um job "Atrasado" o polling fica ligado direto, e trocar o innerHTML a cada 1.5s
+  // sem necessidade fazia um clique cair entre o mousedown e o mouseup num botao recem-recriado
+  // — o clique se perdia (ex: o "⋯" do card nao abria).
+  const snapshot = JSON.stringify(state.jobs);
+  const anyRunning = state.jobs.some((j) => j.runState.status === "running");
+  if (
+    (snapshot !== state.renderedSnapshot || anyRunning) &&
+    !document.querySelector(".dropdown-menu:not([hidden])")
+  ) {
     render();
+    state.renderedSnapshot = snapshot;
   }
   // Mantem o polling ligado nao so enquanto algo esta "Rodando", mas tambem enquanto algo esta
   // "Atrasado": o instante exato em que o horario esperado chega quase sempre aparece atrasado
@@ -280,42 +350,107 @@ function runningRingInfo(runState) {
   return { centerLabel: "Rodando", fraction: 1, tooltip: runState.startedAt ? `Rodando há ${formatElapsed(elapsedMs)}` : null };
 }
 
+function formatShortDateTime(iso) {
+  const d = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  const time = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  if (d.toDateString() === today.toDateString()) return `Hoje, ${time}`;
+  if (d.toDateString() === yesterday.toDateString()) return `Ontem, ${time}`;
+  return `${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "")}, ${time}`;
+}
+
+function jobSourceLabel(job) {
+  if (job.type === "files") {
+    const fs = job.fileSource;
+    return `${fs.protocol.toUpperCase()} · ${fs.host}${fs.remoteDir && fs.remoteDir !== "/" ? fs.remoteDir : ""}`;
+  }
+  const dbs = job.databases === "all" ? "todos os bancos" : job.databases.join(", ");
+  return `${job.host || "localhost"} · ${dbs}`;
+}
+
+function jobMetaLabel(job) {
+  if (!job.lastBackup) return "Nenhum backup ainda";
+  return `${formatShortDateTime(job.lastBackup.mtime)} · ${formatBytes(job.lastBackup.size)} · ${job.backupCount} arquivo${job.backupCount === 1 ? "" : "s"}`;
+}
+
+function menuItem(action, label, iconName, danger = false) {
+  return `<button type="button"${danger ? ' class="btn-danger"' : ""} data-action="${action}">${label} ${icon(iconName)}</button>`;
+}
+
 function jobCardHtml(job) {
   const status = combinedStatus(job);
+  const isFiles = job.type === "files";
+  const isRunning = job.runState.status === "running";
 
   return `
     <article class="card${status.cls ? ` card-${status.cls}` : ""}" data-job="${escapeHtml(job.name)}">
       <div class="card-header">
-        <h2>${escapeHtml(job.name)}</h2>
+        <div class="job-glyph job-glyph-${isFiles ? "files" : "database"}">${icon(isFiles ? "folder" : "database")}</div>
+        <div class="card-title">
+          <h2>${escapeHtml(job.name)}</h2>
+          <p class="card-subtitle">${escapeHtml(jobSourceLabel(job))}</p>
+        </div>
         <div class="card-menu">
-          <button type="button" class="menu-trigger" data-action="toggle-menu" aria-label="Mais acoes">⋮</button>
+          <button type="button" class="menu-trigger" data-action="toggle-menu" aria-label="Mais ações">${icon("ellipsis")}</button>
           <div class="dropdown-menu" data-menu hidden>
-            ${
-              job.runState.status === "running"
-                ? `<button type="button" class="btn-danger" data-action="stop">Parar</button>`
-                : `<button type="button" data-action="run">Executar agora</button>`
-            }
-            <button type="button" data-action="toggle-pause">${job.paused ? "Retomar" : "Pausar"}</button>
-            <button type="button" data-action="view-backups">Arquivos</button>
-            <button type="button" data-action="view-log">Historico</button>
-            <button type="button" data-action="edit-job">Configuracoes</button>
-            <button type="button" class="btn-danger" data-action="delete-job">Excluir</button>
+            ${isRunning ? menuItem("stop", "Parar", "stop", true) : menuItem("run", "Executar agora", "play")}
+            ${menuItem("toggle-pause", job.paused ? "Retomar" : "Pausar", job.paused ? "play" : "pause")}
+            <div class="menu-separator"></div>
+            ${menuItem("view-backups", "Arquivos", "tray")}
+            ${menuItem("view-log", "Histórico", "clock")}
+            ${menuItem("edit-job", "Configurações", "gear")}
+            <div class="menu-separator"></div>
+            ${menuItem("delete-job", "Excluir", "trash", true)}
           </div>
         </div>
       </div>
       <div class="card-body">${countdownRingHtml(job)}</div>
-      <div class="card-badges">
+      <div class="card-footer">
         ${status.label ? `<span class="badge badge-${status.cls}">${escapeHtml(status.label)}</span>` : "<span></span>"}
         ${sizeTrendBadgeHtml(job)}
       </div>
+      <p class="card-meta">${escapeHtml(jobMetaLabel(job))}</p>
     </article>
   `;
+}
+
+/** Linha de resumo sob o titulo grande ("6 jobs · 5 em dia · 1 atrasado"). */
+function renderSummary() {
+  const el = document.getElementById("summary");
+  const jobs = state.jobs;
+  if (jobs.length === 0) {
+    el.textContent = "";
+    return;
+  }
+  const count = (fn) => jobs.filter(fn).length;
+  const running = count((j) => j.runState.status === "running");
+  const failing = count(
+    (j) => j.runState.status !== "running" && (j.runState.status === "error" || (!j.paused && j.scheduleHealth === "overdue")),
+  );
+  const ok = count((j) => j.runState.status !== "running" && !j.paused && j.scheduleHealth === "ok" && j.runState.status !== "error");
+  const paused = count((j) => j.paused);
+  const totalSize = jobs.reduce((sum, j) => sum + (j.totalSize || 0), 0);
+
+  const parts = [`<strong>${jobs.length} job${jobs.length === 1 ? "" : "s"}</strong>`];
+  if (ok) parts.push(`${ok} em dia`);
+  if (running) parts.push(`${running} rodando`);
+  if (failing) parts.push(`<span class="attention">${failing} precisa${failing === 1 ? "" : "m"} de atenção</span>`);
+  if (paused) parts.push(`${paused} pausado${paused === 1 ? "" : "s"}`);
+  parts.push(`${formatBytes(totalSize)} em disco`);
+  el.innerHTML = parts.join(" · ");
 }
 
 function render() {
   const container = document.getElementById("jobs");
   if (state.jobs.length === 0) {
-    container.innerHTML = `<p class="muted">Nenhum job configurado em config.yaml.</p>`;
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-glyph">${icon("archive")}</div>
+        <h3>Nenhum job ainda</h3>
+        <p>Crie um job em “Novo job” para começar a fazer backup de um banco de dados ou de arquivos remotos.</p>
+      </div>`;
     return;
   }
   container.innerHTML = state.jobs.map(jobCardHtml).join("");
@@ -325,30 +460,34 @@ async function renderBackupsInto(target, jobName) {
   try {
     const backups = await apiFetch(`/api/jobs/${encodeURIComponent(jobName)}/backups`);
     if (backups.length === 0) {
-      target.innerHTML = `<p class="muted">Nenhum backup ainda.</p>`;
+      target.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-glyph">${icon("tray")}</div>
+          <h3>Nenhum backup ainda</h3>
+          <p>Os arquivos aparecem aqui depois da primeira execução.</p>
+        </div>`;
       return;
     }
     target.innerHTML = `
-      <table class="backups-table">
-        <tbody>
-          ${backups
-            .map(
-              (b) => `
-            <tr>
-              <td>
-                <div class="backup-filename">${escapeHtml(b.filename)}</div>
-                <div class="muted">${formatBytes(b.size)} · ${formatDateTime(b.mtime)}</div>
-              </td>
-              <td class="backup-row-actions">
-                <a class="btn btn-ghost btn-sm" href="/api/jobs/${encodeURIComponent(jobName)}/backups/${encodeURIComponent(b.filename)}/download">Baixar</a>
-                <button class="btn btn-ghost btn-sm btn-danger" data-action="delete-backup" data-filename="${escapeHtml(b.filename)}">Apagar</button>
-              </td>
-            </tr>
-          `,
-            )
-            .join("")}
-        </tbody>
-      </table>
+      <ul class="backup-list">
+        ${backups
+          .map(
+            (b) => `
+          <li class="backup-row">
+            <div class="row-glyph">${icon("doc")}</div>
+            <div class="backup-info">
+              <div class="backup-filename">${escapeHtml(b.filename)}</div>
+              <div class="backup-meta">${formatBytes(b.size)} · ${formatDateTime(b.mtime)}</div>
+            </div>
+            <div class="backup-row-actions">
+              <a class="btn btn-sm btn-icon tooltip-left" data-tooltip="Baixar" aria-label="Baixar" href="/api/jobs/${encodeURIComponent(jobName)}/backups/${encodeURIComponent(b.filename)}/download">${icon("download")}</a>
+              <button class="btn btn-sm btn-icon btn-danger tooltip-left" data-tooltip="Apagar" aria-label="Apagar" data-action="delete-backup" data-filename="${escapeHtml(b.filename)}">${icon("trash")}</button>
+            </div>
+          </li>
+        `,
+          )
+          .join("")}
+      </ul>
     `;
   } catch (err) {
     target.innerHTML = `<p class="error-line">${escapeHtml(err.message)}</p>`;
@@ -359,8 +498,16 @@ async function renderLogInto(target, jobName) {
   try {
     const { lines } = await apiFetch(`/api/jobs/${encodeURIComponent(jobName)}/log`);
     target.innerHTML = lines.length
-      ? `<pre class="log-view">${escapeHtml(lines.join("\n"))}</pre>`
-      : `<p class="muted">Sem log ainda (aparece apos a primeira execucao via cron ou UI).</p>`;
+      ? `<pre class="log-view">${lines
+          .map((l) => `<span class="log-line${l.includes("[ERROR]") ? " log-error" : ""}">${escapeHtml(l)}</span>`)
+          .join("")}</pre>`
+      : `<div class="empty-state">
+          <div class="empty-glyph">${icon("clock")}</div>
+          <h3>Sem histórico ainda</h3>
+          <p>O log aparece após a primeira execução, via cron ou pela interface.</p>
+        </div>`;
+    // Mais recente no fim: ja abre rolado pra baixo.
+    target.scrollTop = target.scrollHeight;
   } catch (err) {
     target.innerHTML = `<p class="error-line">${escapeHtml(err.message)}</p>`;
   }
@@ -406,6 +553,7 @@ async function openDetailModal(jobName, kind) {
   detailModalOverlay.dataset.kind = kind;
   detailModalTitle.textContent = `${DETAIL_MODAL_LABELS[kind]} — ${jobName}`;
   detailModalBody.innerHTML = `<p class="muted">Carregando…</p>`;
+  detailModalBody.scrollTop = 0; // o Historico abre rolado pro fim; nao herdar isso nos Arquivos
   detailModalOverlay.hidden = false;
   await refreshDetailModal();
 }
@@ -428,7 +576,13 @@ detailModalBody.addEventListener("click", async (e) => {
   if (!btn) return;
   const jobName = detailModalOverlay.dataset.job;
   const filename = btn.dataset.filename;
-  if (!confirm(`Apagar o backup "${filename}"? Essa acao nao pode ser desfeita.`)) return;
+  const ok = await confirmDialog({
+    title: "Apagar este backup?",
+    message: `${filename} será removido do disco. Essa ação não pode ser desfeita.`,
+    confirmLabel: "Apagar",
+    destructive: true,
+  });
+  if (!ok) return;
   try {
     await apiFetch(`/api/jobs/${encodeURIComponent(jobName)}/backups/${encodeURIComponent(filename)}`, {
       method: "DELETE",
@@ -465,7 +619,13 @@ document.getElementById("jobs").addEventListener("click", async (e) => {
   if (btn.dataset.action === "run") {
     await runJob(jobName);
   } else if (btn.dataset.action === "stop") {
-    if (!confirm(`Parar o backup de "${jobName}" em andamento? O arquivo parcial sera descartado.`)) return;
+    const ok = await confirmDialog({
+      title: `Parar “${jobName}”?`,
+      message: "O backup em andamento será interrompido e o arquivo parcial, descartado.",
+      confirmLabel: "Parar",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiFetch(`/api/jobs/${encodeURIComponent(jobName)}/stop`, { method: "POST" });
       showToast(`Parando "${jobName}"...`);
@@ -492,12 +652,13 @@ document.getElementById("jobs").addEventListener("click", async (e) => {
     const job = state.jobs.find((j) => j.name === jobName);
     if (job) openJobModal(job);
   } else if (btn.dataset.action === "delete-job") {
-    if (
-      !confirm(
-        `Remover o job "${jobName}" do config.yaml? Isso NAO apaga os backups ja existentes, so tira o job da lista/rotina.`,
-      )
-    )
-      return;
+    const ok = await confirmDialog({
+      title: `Excluir “${jobName}”?`,
+      message: "O job sai do config.yaml e da rotina. Os backups e logs já existentes são mantidos.",
+      confirmLabel: "Excluir",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await apiFetch(`/api/jobs/${encodeURIComponent(jobName)}`, { method: "DELETE" });
       showToast(`Job "${jobName}" removido.`);
@@ -655,7 +816,13 @@ const CONNECTION_FIELD_NAMES = new Set([
 function setConnectionTested(ok) {
   jobForm.dataset.connectionTested = ok ? "true" : "false";
   jobForm.querySelector('button[type="submit"]').disabled = !ok;
+  document.getElementById("save-hint").hidden = ok;
 }
+
+const TEST_CONNECTION_LABEL = `${icon("link")}<span>Testar conexão</span>`;
+document.querySelectorAll(".test-connection-btn").forEach((btn) => {
+  btn.innerHTML = TEST_CONNECTION_LABEL;
+});
 
 function hideTestConnectionResults() {
   document.querySelectorAll(".test-connection-result").forEach((el) => {
@@ -949,7 +1116,7 @@ async function updateSchedulePreview() {
     schedulePreviewEl.hidden = true;
     return;
   }
-  schedulePreviewEl.textContent = `Projecao: ${parts.join(" · ")}`;
+  schedulePreviewEl.textContent = `Projeção: ${parts.join(" · ")}`;
   schedulePreviewEl.hidden = false;
 }
 
@@ -992,7 +1159,8 @@ document.querySelectorAll(".test-connection-btn").forEach((btn) => {
     const type = jobForm.elements.type.value;
     hideTestConnectionResults();
     btn.disabled = true;
-    btn.textContent = "Testando…";
+    btn.classList.add("is-loading");
+    btn.innerHTML = `${icon("refresh")}<span>Testando…</span>`;
     try {
       const payload = {
         type,
@@ -1004,7 +1172,7 @@ document.querySelectorAll(".test-connection-btn").forEach((btn) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      result.textContent = "✓ Conexao bem-sucedida.";
+      result.textContent = "✓ Conexão bem-sucedida.";
       result.className = "field-hint test-connection-result test-connection-ok";
       result.hidden = false;
       setConnectionTested(true);
@@ -1015,7 +1183,8 @@ document.querySelectorAll(".test-connection-btn").forEach((btn) => {
       setConnectionTested(false);
     } finally {
       btn.disabled = false;
-      btn.textContent = "Testar conexao";
+      btn.classList.remove("is-loading");
+      btn.innerHTML = TEST_CONNECTION_LABEL;
     }
   });
 });
@@ -1068,12 +1237,19 @@ jobForm.addEventListener("submit", async (e) => {
   }
 });
 
-document.querySelector('#job-modal-overlay [data-action="cancel"]').addEventListener("click", closeJobModal);
+document.querySelectorAll('#job-modal-overlay [data-action="cancel"]').forEach((btn) => {
+  btn.addEventListener("click", closeJobModal);
+});
 jobModalOverlay.addEventListener("click", (e) => {
   if (e.target === jobModalOverlay) closeJobModal();
 });
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
+  // O alerta fica por cima das folhas: Esc fecha so ele.
+  if (!confirmOverlay.hidden) {
+    closeConfirm(false);
+    return;
+  }
   if (!jobModalOverlay.hidden) closeJobModal();
   if (!detailModalOverlay.hidden) closeDetailModal();
   closeAllMenus();
@@ -1104,7 +1280,16 @@ document.getElementById("new-job-menu").addEventListener("click", (e) => {
 document.getElementById("cron-toggle-btn").addEventListener("click", async (e) => {
   const action = e.currentTarget.dataset.action;
   if (!action) return;
-  if (action === "uninstall" && !confirm("Remover as entradas do isbackup do crontab?")) return;
+  if (
+    action === "uninstall" &&
+    !(await confirmDialog({
+      title: "Remover do cron?",
+      message: "As rotinas do isbackup saem do crontab e os backups deixam de rodar automaticamente.",
+      confirmLabel: "Remover",
+      destructive: true,
+    }))
+  )
+    return;
   try {
     await apiFetch(`/api/cron/${action}`, { method: "POST" });
     showToast(action === "install" ? "Rotina instalada no cron." : "Rotina removida do cron.");
