@@ -1,0 +1,34 @@
+# Configuracao do isbackup.
+# Copie para config.yaml (ou rode "isbackup init") e ajuste os jobs abaixo.
+#
+# A senha de cada job pode ser:
+#   - ${VAR}, lida do .env (como abaixo) — simples, bom pra comecar.
+#   - cifrada direto aqui: rode `isbackup encrypt "minha-senha"` (ou use o
+#     campo Senha na interface web) e cole o resultado no lugar do ${VAR},
+#     algo como password: enc:v1:.... A chave que cifra/decifra fica em
+#     ISBACKUP_ENCRYPTION_KEY no .env, gerada automaticamente na primeira vez.
+# Nunca deixe a senha em texto puro aqui.
+
+defaults:
+  port: 3306
+  outputDir: ./backups     # cada job grava em outputDir/<nome-do-job>/
+  retentionDays: 7         # dumps mais antigos que isso sao apagados apos cada backup
+  gzip: true
+
+jobs:
+  - name: producao
+    host: db.exemplo.com
+    port: 3306
+    user: backup_user
+    password: ${DB_PRODUCAO_PASSWORD}
+    databases: all          # ou uma lista, ex: [app_producao, app_logs]
+    schedule: daily         # presets: hourly | daily | weekly | monthly, ou cron "0 3 * * *"
+    retentionDays: 14
+
+  - name: staging
+    host: localhost
+    user: root
+    password: ${DB_STAGING_PASSWORD}
+    databases:
+      - app_staging
+    schedule: weekly

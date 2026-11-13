@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>isbackup</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>isbackup</h1>
+      <div class="topbar-actions">
+        <span id="cron-badge" class="badge">carregando…</span>
+        <button id="cron-toggle-btn" class="btn btn-ghost"></button>
+        <div class="card-menu" id="new-job-menu">
+          <button type="button" id="new-job-btn" class="btn btn-ghost" data-action="toggle-menu">+ Novo job</button>
+          <div class="dropdown-menu" data-menu hidden>
+            <button type="button" data-action="new-database">Banco de dados</button>
+            <button type="button" data-action="new-files">Arquivos (via SFTP/FTP)</button>
+          </div>
+        </div>
+        <button id="run-all-btn" class="btn btn-primary">Executar todos agora</button>
+        <button id="refresh-btn" class="btn btn-ghost tooltip-bottom" data-tooltip="Atualizar">⟳ Atualizar</button>
+      </div>
+    </header>
+
+    <main>
+      <div id="jobs" class="jobs-grid">
+        <p class="muted">Carregando jobs…</p>
+      </div>
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <div id="job-modal-overlay" class="modal-overlay" hidden>
+      <div class="modal">
+        <h2 id="job-modal-title">Novo job</h2>
+        <form id="job-form">
+          <div class="form-row">
+            <label for="field-name">Nome</label>
+            <input id="field-name" name="name" required pattern="[A-Za-z0-9_\-]+" placeholder="ex: producao" />
+          </div>
+          <div class="form-row">
+            <label for="field-type">Tipo de job</label>
+            <select id="field-type" name="type">
+              <option value="database" selected>Banco de dados (mysqldump)</option>
+              <option value="files">Arquivos (via SFTP/FTP)</option>
+            </select>
+          </div>
+
+          <div id="field-database-fields">
+            <div class="form-row form-row-split">
+              <div>
+                <label for="field-host">Host</label>
+                <input id="field-host" name="host" placeholder="localhost" />
+              </div>
+              <div>
+                <label for="field-port">Porta</label>
+                <input id="field-port" name="port" type="number" placeholder="3306" />
+              </div>
+            </div>
+            <div class="form-row">
+              <label for="field-user">Usuario</label>
+              <input id="field-user" name="user" />
+            </div>
+            <div class="form-row">
+              <label for="field-password">Senha</label>
+              <input id="field-password" name="password" type="password" autocomplete="new-password" />
+              <p class="field-hint" id="password-hint">Fica cifrada dentro do config.yaml (chave em .env).</p>
+            </div>
+            <div class="form-row test-connection-row">
+              <button type="button" id="test-connection-btn-database" class="btn btn-ghost test-connection-btn">Testar conexao</button>
+              <p class="field-hint test-connection-result" id="test-connection-result-database" hidden></p>
+            </div>
+            <div class="form-row">
+              <span class="form-label">Bancos</span>
+              <label class="radio-label"><input type="radio" name="dbMode" value="all" checked /> Todos os bancos</label>
+              <label class="radio-label"><input type="radio" name="dbMode" value="specific" /> Bancos especificos</label>
+              <input id="field-databases" name="databases" placeholder="banco1, banco2" disabled />
+            </div>
+          </div>
+
+          <div id="field-files-fields" hidden>
+            <div class="form-row">
+              <label for="field-file-protocol">Protocolo</label>
+              <select id="field-file-protocol" name="fileSourceProtocol">
+                <option value="sftp" selected>SFTP</option>
+                <option value="ftp">FTP</option>
+              </select>
+            </div>
+            <div class="form-row form-row-split">
+              <div>
+                <label for="field-file-host">Host</label>
+                <input id="field-file-host" name="fileSourceHost" placeholder="host remoto" />
+              </div>
+              <div>
+                <label for="field-file-port">Porta</label>
+                <input id="field-file-port" name="fileSourcePort" type="number" placeholder="22" />
+              </div>
+            </div>
+            <div class="form-row">
+              <label for="field-file-user">Usuario</label>
+              <input id="field-file-user" name="fileSourceUser" />
+            </div>
+            <div class="form-row">
+              <label for="field-file-password">Senha</label>
+              <input id="field-file-password" name="fileSourcePassword" type="password" autocomplete="new-password" />
+              <p class="field-hint" id="file-password-hint">Fica cifrada dentro do config.yaml (mesma chave em .env).</p>
+            </div>
+            <div class="form-row">
+              <label for="field-file-remote-dir">Diretorio remoto</label>
+              <input id="field-file-remote-dir" name="fileSourceRemoteDir" placeholder="/" />
+            </div>
+            <div class="form-row" id="field-file-secure-row" hidden>
+              <label><input id="field-file-secure" name="fileSourceSecure" type="checkbox" /> Usar FTPS (conexao segura)</label>
+            </div>
+            <div class="form-row test-connection-row">
+              <button type="button" id="test-connection-btn-files" class="btn btn-ghost test-connection-btn">Testar conexao</button>
+              <p class="field-hint test-connection-result" id="test-connection-result-files" hidden></p>
+            </div>
+            <div class="form-row form-row-split">
+              <div>
+                <label for="field-file-pattern">Padrao de nome</label>
+                <input id="field-file-pattern" name="fileSourcePattern" placeholder="* (ex: *.log)" />
+              </div>
+              <div>
+                <label for="field-file-name-contains">Nome contem</label>
+                <input id="field-file-name-contains" name="fileSourceNameContains" placeholder="opcional" />
+              </div>
+            </div>
+            <div class="form-row">
+              <label for="field-file-modified-days">Modificados nos ultimos (dias)</label>
+              <input id="field-file-modified-days" name="fileSourceModifiedWithinDays" type="number" min="1" placeholder="opcional" />
+            </div>
+            <p class="field-hint">
+              So arquivos que baterem com todos os filtros preenchidos sao baixados e compactados
+              num .tar.gz. Deixe em branco os que nao quiser usar.
+            </p>
+          </div>
+
+          <div class="form-row">
+            <label for="field-schedule-mode">Rotina</label>
+            <select id="field-schedule-mode" name="scheduleMode">
+              <option value="hourly">A cada hora</option>
+              <option value="everyNHours">A cada N horas (mais de 1x por dia)</option>
+              <option value="daily" selected>Diaria</option>
+              <option value="weekdays">Dias especificos da semana</option>
+              <option value="weekly">Semanal</option>
+              <option value="monthly">Mensal</option>
+              <option value="custom">Personalizada (cron)</option>
+            </select>
+            <div class="schedule-detail-row" id="field-hourly-window-row" hidden>
+              <span>das</span>
+              <input id="field-hourly-start" type="number" min="0" max="23" value="0" />
+              <span>as</span>
+              <input id="field-hourly-end" type="number" min="0" max="23" value="23" />
+              <span>h</span>
+            </div>
+            <div class="schedule-hours-row" id="field-schedule-hours-row" hidden>
+              <span>a cada</span>
+              <input id="field-schedule-hours" name="scheduleHours" type="number" min="1" max="23" value="6" />
+              <span>horas</span>
+            </div>
+            <div class="schedule-detail-row" id="field-everyn-window-row" hidden>
+              <span>das</span>
+              <input id="field-everyn-start" type="number" min="0" max="23" value="0" />
+              <span>as</span>
+              <input id="field-everyn-end" type="number" min="0" max="23" value="23" />
+              <span>h</span>
+            </div>
+            <p class="field-hint" id="hourly-window-hint" hidden>
+              Deixe 0 a 23 pra rodar o dia todo. Inicio maior que o fim funciona (ex: 22 as 6 =
+              janela durante a madrugada). Inicio igual ao fim = um horario especifico so.
+            </p>
+            <div class="weekday-picker-row" id="field-weekday-picker-row" hidden>
+              <div class="weekday-picker">
+                <button type="button" class="weekday-btn" data-day="0" aria-pressed="false">Dom</button>
+                <button type="button" class="weekday-btn" data-day="1" aria-pressed="false">Seg</button>
+                <button type="button" class="weekday-btn" data-day="2" aria-pressed="false">Ter</button>
+                <button type="button" class="weekday-btn" data-day="3" aria-pressed="false">Qua</button>
+                <button type="button" class="weekday-btn" data-day="4" aria-pressed="false">Qui</button>
+                <button type="button" class="weekday-btn" data-day="5" aria-pressed="false">Sex</button>
+                <button type="button" class="weekday-btn" data-day="6" aria-pressed="false">Sab</button>
+              </div>
+              <p class="field-hint" id="weekday-picker-hint"></p>
+            </div>
+            <div class="schedule-detail-row" id="field-weekdays-row" hidden>
+              <span>as</span>
+              <input id="field-weekdays-hour" type="number" min="0" max="23" value="3" />
+              <span>h</span>
+            </div>
+            <div class="schedule-detail-row" id="field-daily-row" hidden>
+              <span>as</span>
+              <input id="field-daily-hour" type="number" min="0" max="23" value="3" />
+              <span>h</span>
+            </div>
+            <div class="schedule-detail-row" id="field-weekly-row" hidden>
+              <span>toda</span>
+              <select id="field-weekly-day">
+                <option value="0">domingo</option>
+                <option value="1">segunda</option>
+                <option value="2">terca</option>
+                <option value="3">quarta</option>
+                <option value="4">quinta</option>
+                <option value="5">sexta</option>
+                <option value="6">sabado</option>
+              </select>
+              <span>as</span>
+              <input id="field-weekly-hour" type="number" min="0" max="23" value="3" />
+              <span>h</span>
+            </div>
+            <div class="schedule-detail-row" id="field-monthly-row" hidden>
+              <span>todo dia</span>
+              <input id="field-monthly-day" type="number" min="1" max="31" value="1" />
+              <span>as</span>
+              <input id="field-monthly-hour" type="number" min="0" max="23" value="3" />
+              <span>h</span>
+            </div>
+            <input id="field-schedule-custom" name="scheduleCustom" placeholder="0 3 * * *" hidden />
+          </div>
+          <div class="form-row form-row-split">
+            <div>
+              <label for="field-retention">Retencao (dias)</label>
+              <input id="field-retention" name="retentionDays" type="number" min="0" placeholder="7" />
+            </div>
+            <div class="form-row-checkbox" id="field-gzip-row">
+              <label><input id="field-gzip" name="gzip" type="checkbox" checked /> Comprimir (gzip)</label>
+            </div>
+          </div>
+          <p class="schedule-preview" id="schedule-preview" hidden></p>
+          <p class="modal-error error-line" id="job-form-error" hidden></p>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-ghost" data-action="cancel">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Salvar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="detail-modal-overlay" class="modal-overlay" hidden>
+      <div class="modal modal-wide">
+        <h2 id="detail-modal-title">Detalhes</h2>
+        <div id="detail-modal-body"><p class="muted">Carregando…</p></div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-action="close-detail">Fechar</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

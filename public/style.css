@@ -1,0 +1,833 @@
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --border: #e2e4e9;
+  --text: #1a1d23;
+  --text-muted: #6b7280;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --ok: #16a34a;
+  --ok-bg: #dcfce7;
+  --error: #dc2626;
+  --error-bg: #fee2e2;
+  --running-bg: #dbeafe;
+  --running: #2563eb;
+  --warning: #b45309;
+  --warning-bg: #fef3c7;
+  --ok-wash: rgba(22, 163, 74, 0.07);
+  --error-wash: rgba(220, 38, 38, 0.07);
+  --running-wash: rgba(37, 99, 235, 0.08);
+  --radius: 10px;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14161a;
+    --surface: #1c1f26;
+    --border: #2c303a;
+    --text: #e5e7eb;
+    --text-muted: #9aa1ac;
+    --primary: #3b82f6;
+    --primary-hover: #60a5fa;
+    --ok: #4ade80;
+    --ok-bg: #14532d;
+    --error: #f87171;
+    --error-bg: #450a0a;
+    --running-bg: #1e3a8a;
+    --running: #60a5fa;
+    --warning: #fbbf24;
+    --warning-bg: #422006;
+    --ok-wash: rgba(74, 222, 128, 0.1);
+    --error-wash: rgba(248, 113, 113, 0.1);
+    --running-wash: rgba(96, 165, 250, 0.12);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-wrap: wrap;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.topbar h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+main {
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.jobs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: calc(var(--radius) + 4px);
+  padding: 20px;
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+}
+
+.card-ok {
+  border-left-color: var(--ok);
+  background: var(--ok-wash);
+}
+
+.card-error {
+  border-left-color: var(--error);
+  background: var(--error-wash);
+}
+
+.card-running {
+  border-left-color: var(--running);
+  background: var(--running-wash);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Status + selo de tamanho ficam embaixo do relogio, distribuidos na linha (status na
+   esquerda, selo na direita) em vez de espremidos perto do nome. */
+.card-badges {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-height: 22px;
+  margin-top: 8px;
+}
+
+/* So aparece enquanto um job de arquivos esta baixando de verdade (sabe o total de bytes com
+   antecedencia) — mostra que esta progredindo, nao travado. */
+.run-progress-bar {
+  margin-top: 8px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.run-progress-fill {
+  height: 100%;
+  background: var(--running);
+  transition: width 0.6s ease;
+}
+
+.card-header h2 {
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+  line-height: 1.15;
+  word-break: break-word;
+}
+
+.card-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+.next-run-ring-wrap {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  flex-shrink: 0;
+}
+
+.next-run-ring {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.ring-track {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 7;
+}
+
+.ring-progress {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 7;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s linear;
+}
+
+.card-ok .ring-progress {
+  color: var(--ok);
+}
+
+.card-error .ring-progress {
+  color: var(--error);
+}
+
+.card-running .ring-progress {
+  color: var(--running);
+}
+
+/* Job rodando: o anel mostra o progresso do job e pisca devagar. O periodo tem que bater com
+   RING_RUNNING_BLINK_MS em app.js (usado pra manter a fase entre redesenhos do card). */
+@keyframes ring-running-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.ring-progress.ring-running {
+  color: var(--running);
+  transition: none;
+  animation: ring-running-blink 2.4s ease-in-out infinite;
+}
+
+.card:not(.card-ok):not(.card-error):not(.card-running) .ring-progress {
+  color: var(--text-muted);
+}
+
+.ring-center-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.ring-center-muted {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* Indica se o ultimo backup ficou maior (ok) ou igual/menor (warning) que o anterior — um
+   arquivo que nao cresce e um sinal de que o dump pode ter falhado silenciosamente. Fica junto
+   do badge de status (acima do nome), nao mais flutuando em cima do anel — la ele acabava
+   sobrepondo o proprio traço do anel e ficava dificil de perceber o que era o que. */
+.size-trend-badge {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: default;
+}
+
+.size-trend-ok {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+/* Menos de 1min pro proximo backup: pisca em amarelo (anel + numero), pra chamar mais atencao
+   que so a contagem regressiva descendo. */
+@keyframes ring-due-soon-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(251, 191, 36, 0);
+  }
+}
+
+.next-run-ring-wrap.due-soon {
+  border-radius: 50%;
+  animation: ring-due-soon-pulse 1s ease-in-out infinite;
+}
+
+.next-run-ring-wrap.due-soon .ring-progress {
+  color: var(--warning);
+  animation: ring-due-soon-stroke 1s ease-in-out infinite;
+}
+
+.next-run-ring-wrap.due-soon .ring-center-label {
+  color: var(--warning);
+  font-weight: 700;
+}
+
+@keyframes ring-due-soon-stroke {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.size-trend-warning {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+/* Tooltip customizado (substitui o title nativo do navegador, que nao segue o tema escuro
+   e nao da pra estilizar). Colocado em qualquer elemento via data-tooltip="texto". */
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text);
+  color: var(--surface);
+  padding: 5px 9px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  z-index: 40;
+}
+
+[data-tooltip].tooltip-bottom::after {
+  bottom: auto;
+  top: calc(100% + 8px);
+}
+
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+.card-menu {
+  position: relative;
+}
+
+.menu-trigger {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  padding: 0;
+}
+
+.menu-trigger:hover {
+  border-color: var(--primary);
+  color: var(--text);
+}
+
+.dropdown-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  min-width: 130px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+}
+
+.dropdown-menu[hidden] {
+  display: none;
+}
+
+.dropdown-menu button {
+  background: transparent;
+  border: none;
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text);
+  font-family: inherit;
+}
+
+.dropdown-menu button:hover {
+  background: var(--bg);
+}
+
+.dropdown-menu button.btn-danger {
+  color: var(--error);
+}
+
+.btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.2;
+}
+
+.btn:hover {
+  border-color: var(--primary);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: var(--primary-hover);
+}
+
+.btn-ghost {
+  background: transparent;
+}
+
+.btn-sm {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.btn-danger {
+  color: var(--error);
+}
+
+.badge {
+  font-size: 12px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--border);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.badge-ok {
+  background: var(--ok-bg);
+  color: var(--ok);
+}
+
+.badge-error {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.badge-running {
+  background: var(--running-bg);
+  color: var(--running);
+}
+
+.badge-off {
+  background: var(--border);
+  color: var(--text-muted);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.error-line {
+  color: var(--error);
+  font-size: 13px;
+  margin: 8px 0;
+  word-break: break-word;
+}
+
+.backups-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.backups-table td {
+  text-align: left;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.backup-filename {
+  word-break: break-all;
+}
+
+.backup-row-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.log-view {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text);
+  color: var(--bg);
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  max-width: min(90vw, 480px);
+  text-align: center;
+}
+
+.toast-error {
+  background: var(--error);
+  color: #fff;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px;
+  overflow-y: auto;
+  z-index: 100;
+}
+
+.modal-overlay[hidden] {
+  display: none;
+}
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  width: 100%;
+  max-width: 440px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+
+.modal h2 {
+  margin: 0 0 16px;
+  font-size: 17px;
+}
+
+.modal-wide {
+  max-width: 560px;
+}
+
+#detail-modal-body {
+  max-height: 60vh;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+.form-row {
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* .form-row/.form-row-checkbox tem display:flex proprio, que sozinho derrota o [hidden] nativo
+ * do navegador (display:none) — precisa reforcar explicitamente, mesmo padrao ja usado pelas
+ * outras linhas condicionais do formulario (.schedule-detail-row[hidden] etc). */
+.form-row[hidden],
+.form-row-checkbox[hidden] {
+  display: none;
+}
+
+.form-row-split {
+  flex-direction: row;
+  gap: 12px;
+}
+
+.form-row-split > div {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.form-row-checkbox {
+  display: flex;
+  align-items: center;
+  padding-top: 20px;
+}
+
+.schedule-hours-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+.schedule-hours-row[hidden] {
+  display: none;
+}
+
+.schedule-hours-row span {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.modal #field-schedule-hours {
+  width: 70px;
+  flex: none;
+}
+
+.schedule-detail-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.schedule-detail-row[hidden] {
+  display: none;
+}
+
+.schedule-detail-row span {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.modal #field-daily-hour,
+.modal #field-weekly-hour,
+.modal #field-monthly-hour,
+.modal #field-hourly-start,
+.modal #field-hourly-end,
+.modal #field-everyn-start,
+.modal #field-everyn-end {
+  width: 60px;
+  flex: none;
+}
+
+.modal #field-weekly-day {
+  width: auto;
+  flex: none;
+}
+
+.modal #field-monthly-day {
+  width: 60px;
+  flex: none;
+}
+
+.weekday-picker-row {
+  margin-top: 8px;
+}
+
+.weekday-picker-row[hidden] {
+  display: none;
+}
+
+.weekday-picker {
+  display: flex;
+  gap: 4px;
+}
+
+.weekday-btn {
+  width: 38px;
+  height: 30px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+}
+
+.weekday-btn:hover {
+  border-color: var(--primary);
+}
+
+.weekday-btn[aria-pressed="true"] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.weekday-hour {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.modal #field-weekdays-hour {
+  width: 60px;
+  flex: none;
+}
+
+.form-label,
+.form-row label:not(.radio-label) {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: normal;
+}
+
+.field-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+#hourly-window-hint {
+  margin-top: 6px;
+}
+
+.test-connection-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.test-connection-ok {
+  color: var(--ok);
+  font-weight: 600;
+}
+
+.test-connection-error {
+  color: var(--error);
+  font-weight: 600;
+}
+
+.modal input[type="text"],
+.modal input[type="password"],
+.modal input[type="number"],
+.modal input:not([type]),
+.modal select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--text);
+  width: 100%;
+  font-family: inherit;
+}
+
+.modal input:disabled {
+  opacity: 0.5;
+}
+
+.schedule-preview {
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}

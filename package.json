@@ -1,0 +1,35 @@
+{
+  "name": "isbackup",
+  "version": "1.0.0",
+  "description": "Sistema de backup (dump) de bancos MySQL/MariaDB, configuravel por arquivo, com rotinas via cron",
+  "type": "module",
+  "bin": {
+    "isbackup": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli.js",
+    "dev": "tsx src/cli.ts",
+    "ui": "node dist/cli.js ui"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "basic-ftp": "^6.2.1",
+    "commander": "^15.0.0",
+    "cron-parser": "^5.10.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "js-yaml": "^5.4.1",
+    "ssh2-sftp-client": "^12.1.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^26.4.1",
+    "@types/ssh2-sftp-client": "^9.0.6",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}

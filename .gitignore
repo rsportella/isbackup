@@ -1,0 +1,14 @@
+node_modules/
+dist/
+backups/
+logs/
+.env
+*.sql
+*.sql.gz
+
+# Config real (hosts, usuarios e senhas cifradas dos jobs) - use config.example.yaml como base
+config.yaml
+
+.DS_Store
+*.tar.gz
+*.log
