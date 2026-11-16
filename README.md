@@ -11,7 +11,7 @@ Um arquivo YAML, o cron que já existe na sua máquina e nenhum servidor extra p
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A5%2022.12-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](tsconfig.json)
 [![Testes](https://img.shields.io/badge/testes-node%3Atest-34C759)](test)
-[![Licença: ISC](https://img.shields.io/badge/licen%C3%A7a-ISC-8E8E93)](LICENSE)
+[![Licença: MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-8E8E93)](LICENSE)
 ![macOS e Linux](https://img.shields.io/badge/macOS%20%7C%20Linux-000000?logo=apple&logoColor=white)
 [![Docker](https://img.shields.io/badge/Docker-pronto-2496ED?logo=docker&logoColor=white)](#opção-2-docker-desktop)
 
@@ -366,7 +366,7 @@ sem banco nem servidor remoto.
 
 ## Licença
 
-[ISC](LICENSE) © Rodolfo Portella
+[MIT](LICENSE) © Rodolfo Portella
 
 ---
 
