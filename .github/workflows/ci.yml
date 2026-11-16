@@ -1,0 +1,77 @@
+# Testa o isbackup nos tres sistemas a cada push: Windows, Linux e macOS.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  testes:
+    name: Testes (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      - name: Painel sobe, responde e recusa outros sites
+        shell: bash
+        run: |
+          printf 'jobs: []\n' > config.yaml
+          node dist/cli.js ui --port 8799 > painel.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS -o /dev/null http://127.0.0.1:8799/api/jobs && break; sleep 1; done
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8799/api/jobs)" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8799/)" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: site-malicioso.com' http://127.0.0.1:8799/api/jobs)" = 403
+          echo "painel ok"; cat painel.log
+
+  windows-agendador:
+    # O Agendador de Tarefas de verdade: instala a tarefa, espera ela rodar o "isbackup tick"
+    # sozinha (o job falha por nao haver mysqldump na maquina, mas o log prova que rodou) e remove.
+    name: Agendador do Windows (de verdade)
+    runs-on: windows-latest
+    env:
+      ISBACKUP_TASK_NAME: isbackup-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Instala, espera disparar e remove
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Set-Content -Path config.yaml -Value "jobs:`n  - name: ci`n    schedule: '* * * * *'`n    user: u`n    password: x`n"
+          node dist/cli.js cron install --dry-run
+          node dist/cli.js cron install
+          schtasks /Query /TN isbackup-ci
+          node dist/cli.js cron status
+
+          $rodou = $false
+          for ($i = 0; $i -lt 36; $i++) {
+            if ((Test-Path logs/ci.log) -and (Select-String -Path logs/ci.log -Pattern 'Iniciando backup|falhou' -Quiet)) { $rodou = $true; break }
+            Start-Sleep -Seconds 5
+          }
+          if (Test-Path logs/ci.log) { Get-Content logs/ci.log }
+
+          node dist/cli.js cron uninstall
+          schtasks /Query /TN isbackup-ci 2>$null
+          if ($LASTEXITCODE -eq 0) { throw "a tarefa nao foi removida" }
+          if (-not $rodou) { throw "a tarefa agendada nao rodou o tick em 3 minutos" }
+          Write-Host "Agendador do Windows ok: a tarefa rodou o tick sozinha e foi removida."

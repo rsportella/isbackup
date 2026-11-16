@@ -5,7 +5,7 @@ import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createApp } from "../src/web/server.ts";
 import { readRawConfig } from "../src/config.ts";
-import { quietly, tempDir } from "./helpers.ts";
+import { assertMode, quietly, tempDir } from "./helpers.ts";
 
 // Sobe a API de verdade contra um projeto temporario (config.yaml, .env e logs proprios).
 const root = tempDir();
@@ -56,7 +56,7 @@ describe("API de jobs", () => {
     const saved = readRawConfig(configPath).jobs[0];
     assert.match(saved.password!, /^enc:v1:/);
     assert.match(fs.readFileSync(path.join(root, ".env"), "utf8"), /^ISBACKUP_ENCRYPTION_KEY="[0-9a-f]{64}"\n$/);
-    assert.equal(fs.statSync(path.join(root, ".env")).mode & 0o777, 0o600);
+    assertMode(path.join(root, ".env"), 0o600);
   });
 
   it("recusa nome duplicado (409) e dados invalidos (400)", async () => {

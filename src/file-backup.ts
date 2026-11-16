@@ -297,14 +297,28 @@ async function downloadFtp(
 
 const FALLBACK_TAR_DIRS = ["/usr/bin", "/bin"];
 
+/**
+ * No Windows usa o tar.exe nativo (Windows 10 1803+, em System32). O tar do Git Bash (GNU) pode
+ * aparecer antes no PATH e entende "C:\\..." como um servidor remoto ("C:" = host), quebrando a
+ * compactacao.
+ */
+export function tarCommand(): string {
+  if (process.platform === "win32") {
+    const native = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
+    if (fs.existsSync(native)) return native;
+  }
+  return "tar";
+}
+
 /** Compacta um diretorio inteiro num .tar.gz, chamando o `tar` do sistema (mesmo padrao ja usado
  * pro mysqldump: shell out a um binario bem conhecido, em vez de trazer uma dependencia de
  * archiving so pra isso). */
-function createTarGz(stagingDir: string, outputFile: string): Promise<void> {
+export function createTarGz(stagingDir: string, outputFile: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const child = spawn("tar", ["-czf", outputFile, "-C", stagingDir, "."], {
+    const child = spawn(tarCommand(), ["-czf", outputFile, "-C", stagingDir, "."], {
       stdio: ["ignore", "pipe", "pipe"],
-      env: spawnEnvWithFallbackPath(FALLBACK_TAR_DIRS),
+      env: spawnEnvWithFallbackPath(process.platform === "win32" ? [] : FALLBACK_TAR_DIRS),
+      windowsHide: true,
     });
 
     let stderrOutput = "";

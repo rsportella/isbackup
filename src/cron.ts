@@ -74,7 +74,8 @@ export function cronShellArg(value: string): string {
 
 function jobCronLine(job: JobConfig, ctx: CronContext): string {
   const cronExpr = resolveSchedule(job.schedule);
-  const cliPath = path.join(ctx.projectRoot, "dist", "cli.js");
+  // O cron so existe em macOS/Linux: caminhos sempre no formato posix.
+  const cliPath = path.posix.join(ctx.projectRoot, "dist", "cli.js");
   // Sem redirecionamento de log aqui: o proprio "isbackup run" ja grava em logs/<job>.log
   // diretamente (job-log.ts), do mesmo jeito que um run disparado pela UI ou pelo self-heal —
   // redirecionar o shell tambem pro mesmo arquivo duplicaria cada linha.
@@ -92,8 +93,16 @@ export function buildManagedBlock(jobs: JobConfig[], ctx: CronContext): string {
   return [BLOCK_START, ...lines, BLOCK_END].join("\n");
 }
 
+const CRONTAB_MISSING =
+  "Comando \"crontab\" nao encontrado. Instale o cron (Debian/Ubuntu: sudo apt install cron; " +
+  "Fedora: sudo dnf install cronie; Arch: sudo pacman -S cronie) e confira se o servico esta ativo.";
+
 export function readCurrentCrontab(): string {
   const result = spawnSync("crontab", ["-l"], { encoding: "utf8" });
+  if (result.error) {
+    if ((result.error as NodeJS.ErrnoException).code === "ENOENT") throw new Error(CRONTAB_MISSING);
+    throw result.error;
+  }
   if (result.status !== 0) {
     // "no crontab for <user>" sai com codigo != 0 na primeira vez; tratamos como vazio.
     return "";
@@ -138,6 +147,7 @@ export function buildNewCrontab(jobs: JobConfig[], ctx: CronContext): string {
 
 export function applyCrontab(newText: string): void {
   const result = spawnSync("crontab", ["-"], { input: newText, encoding: "utf8" });
+  if ((result.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") throw new Error(CRONTAB_MISSING);
   if (result.status !== 0) {
     throw new Error(`Falha ao instalar crontab: ${result.stderr || result.error?.message || "erro desconhecido"}`);
   }

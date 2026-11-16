@@ -120,7 +120,7 @@ describe("uso legitimo continua funcionando", () => {
   });
 
   it("curl/CLI/healthcheck (sem cabecalhos de navegador) funcionam", async () => {
-    assert.equal((await request("GET", "/api/cron/status")).status, 200);
+    assert.equal((await request("GET", "/api/jobs")).status, 200);
     assert.equal((await request("GET", "/")).status, 200);
   });
 });

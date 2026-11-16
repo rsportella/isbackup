@@ -4,15 +4,8 @@ import { Router, type Request, type Response } from "express";
 import { loadConfig, readRawConfig, writeRawConfig } from "../config.js";
 import { readRunLock, requestCancel } from "../run-lock.js";
 import { listBackupFiles, resolveBackupFile } from "../backups.js";
-import {
-  applyCrontab,
-  buildManagedBlock,
-  buildNewCrontab,
-  extractManagedBlock,
-  readCurrentCrontab,
-  resolveSchedule,
-  type CronContext,
-} from "../cron.js";
+import { resolveSchedule, type CronContext } from "../cron.js";
+import { getScheduler } from "../scheduler.js";
 import { logger } from "../logger.js";
 import type { JobConfig } from "../types.js";
 import { getJobState } from "./state.js";
@@ -39,6 +32,7 @@ import {
   SettingsError,
   startMovingBackups,
   suggestedDirs,
+  exampleDir,
 } from "./settings.js";
 import {
   buildConnectionTestTarget,
@@ -434,6 +428,8 @@ export function createApiRouter(opts: ApiOptions): Router {
       /** Jobs com pasta propria no config.yaml: nao seguem a pasta padrao. */
       jobsWithOwnDir: raw.jobs.filter((j) => j.outputDir).map((j) => j.name),
       suggestions: isDocker() ? [] : suggestedDirs(),
+      /** Exemplo de caminho no formato do sistema (placeholder do campo). */
+      exampleDir: exampleDir(),
       move: getMoveStatus(),
     };
   }
@@ -487,27 +483,22 @@ export function createApiRouter(opts: ApiOptions): Router {
     }
   });
 
+  // Agendamento (cron em macOS/Linux, Agendador de Tarefas no Windows — ver scheduler.ts). As rotas
+  // continuam em /cron/* por historico.
+  const scheduler = getScheduler();
+
   router.get("/cron/status", (_req, res) => {
-    const lines = extractManagedBlock(readCurrentCrontab());
-
-    // Compara as linhas de fato instaladas com as que o config atual geraria — nao so os nomes
-    // dos jobs. Comparar so os nomes deixava passar batido um job cujo *schedule* (ou saida, ou
-    // retencao via cron) mudou na UI mas cujo crontab nunca foi reinstalado: o card aparecia
-    // "atrasado" porque a saude e calculada contra o schedule novo, mas o cron continuava rodando
-    // no horario antigo.
-    let expectedLines: string[] = [];
     try {
-      const activeJobs = loadConfig(opts.configPath).filter((j) => !j.paused);
-      expectedLines = activeJobs.length ? extractManagedBlock(buildManagedBlock(activeJobs, cronCtx())) : [];
-    } catch {
-      // config invalido nao deve impedir a leitura do status do cron
+      let jobs: JobConfig[] | null = null;
+      try {
+        jobs = loadConfig(opts.configPath);
+      } catch {
+        // config invalido nao deve impedir a leitura do status do agendamento
+      }
+      res.json(scheduler.status(jobs, cronCtx()));
+    } catch (err) {
+      res.status(500).json({ error: (err as Error).message });
     }
-
-    const stale =
-      lines.length > 0 &&
-      (lines.length !== expectedLines.length || !lines.every((line) => expectedLines.includes(line)));
-
-    res.json({ installed: lines.length > 0, lines, stale });
   });
 
   router.post("/cron/install", (_req, res) => {
@@ -519,7 +510,7 @@ export function createApiRouter(opts: ApiOptions): Router {
       }
       const ctx = cronCtx();
       fs.mkdirSync(ctx.logDir, { recursive: true });
-      applyCrontab(buildNewCrontab(jobs, ctx));
+      scheduler.install(jobs, ctx);
       res.json({ ok: true });
     } catch (err) {
       res.status(400).json({ error: (err as Error).message });
@@ -528,7 +519,7 @@ export function createApiRouter(opts: ApiOptions): Router {
 
   router.post("/cron/uninstall", (_req, res) => {
     try {
-      applyCrontab(buildNewCrontab([], cronCtx()));
+      scheduler.uninstall(cronCtx());
       res.json({ ok: true });
     } catch (err) {
       res.status(400).json({ error: (err as Error).message });

@@ -33,10 +33,10 @@ function buildArgs(job: DatabaseJobConfig, credentialsFile: string): string[] {
   return args;
 }
 
-// cron (e outros agendadores) rodam com um PATH minimo, que normalmente nao inclui
-// onde o Homebrew instala o mysql-client (e "keg-only", nem fica em /opt/homebrew/bin).
-// Isso fazia o job falhar so quando disparado pelo cron, mesmo com mysqldump instalado.
-const FALLBACK_MYSQLDUMP_DIRS = [
+// O cron (e outros agendadores) roda com um PATH minimo, que normalmente nao inclui onde o
+// Homebrew instala o mysql-client (e "keg-only", nem fica em /opt/homebrew/bin). Sem isso o job
+// falhava so quando disparado pelo agendador, mesmo com o mysqldump instalado.
+const UNIX_MYSQL_DIRS = [
   "/opt/homebrew/opt/mysql-client/bin", // Homebrew, Apple Silicon (mysql-client e keg-only)
   "/opt/homebrew/bin",
   "/usr/local/opt/mysql-client/bin", // Homebrew, Intel
@@ -45,10 +45,44 @@ const FALLBACK_MYSQLDUMP_DIRS = [
   "/bin",
 ];
 
-export function spawnEnvWithFallbackPath(extraDirs: string[] = FALLBACK_MYSQLDUMP_DIRS): NodeJS.ProcessEnv {
-  const current = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean);
+/**
+ * No Windows os instaladores do MySQL e do MariaDB nao colocam o cliente no PATH: procura nas
+ * pastas padrao ("C:\\Program Files\\MySQL\\MySQL Server 8.4\\bin", "C:\\Program Files\\MariaDB 11.4\\bin",
+ * XAMPP), versoes mais novas primeiro.
+ */
+export function windowsMysqlDirs(env: NodeJS.ProcessEnv = process.env): string[] {
+  const roots = [...new Set([env.ProgramW6432, env.ProgramFiles, env["ProgramFiles(x86)"]].filter(Boolean))] as string[];
+  const found: string[] = [];
+  const list = (dir: string) => {
+    try {
+      return fs.readdirSync(dir).sort().reverse();
+    } catch {
+      return [];
+    }
+  };
+  for (const root of roots) {
+    for (const entry of list(root)) {
+      if (/^MariaDB/i.test(entry)) found.push(path.join(root, entry, "bin"));
+      else if (/^MySQL$/i.test(entry)) {
+        for (const product of list(path.join(root, entry))) found.push(path.join(root, entry, product, "bin"));
+      }
+    }
+  }
+  found.push(path.join(env.SystemDrive ?? "C:", "\\", "xampp", "mysql", "bin"));
+  return found.filter((dir) => fs.existsSync(dir));
+}
+
+function defaultToolDirs(): string[] {
+  return process.platform === "win32" ? windowsMysqlDirs() : UNIX_MYSQL_DIRS;
+}
+
+export function spawnEnvWithFallbackPath(extraDirs: string[] = defaultToolDirs()): NodeJS.ProcessEnv {
+  // No Windows a variavel se chama "Path" (sem diferenciar maiusculas): reaproveita o nome que ja
+  // existe, senao o processo filho ficaria com duas variaveis de PATH e poderia ler a errada.
+  const key = Object.keys(process.env).find((k) => k.toUpperCase() === "PATH") ?? "PATH";
+  const current = (process.env[key] ?? "").split(path.delimiter).filter(Boolean);
   const merged = [...new Set([...current, ...extraDirs])];
-  return { ...process.env, PATH: merged.join(path.delimiter) };
+  return { ...process.env, [key]: merged.join(path.delimiter) };
 }
 
 // Checa o pedido de cancelamento nesse intervalo enquanto o mysqldump roda — nao ha "callback de
@@ -68,6 +102,7 @@ async function runMysqldump(job: DatabaseJobConfig, credentialsFile: string, tar
   const child = spawn("mysqldump", buildArgs(job, credentialsFile), {
     stdio: ["ignore", "pipe", "pipe"],
     env: spawnEnvWithFallbackPath(),
+    windowsHide: true,
   });
 
   let stderrOutput = "";

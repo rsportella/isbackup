@@ -12,7 +12,8 @@ Um arquivo YAML, o cron que já existe na sua máquina e nenhum servidor extra p
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](tsconfig.json)
 [![Testes](https://img.shields.io/badge/testes-node%3Atest-34C759)](test)
 [![Licença: MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-8E8E93)](LICENSE)
-![macOS e Linux](https://img.shields.io/badge/macOS%20%7C%20Linux-000000?logo=apple&logoColor=white)
+[![CI](https://github.com/rsportella/isbackup/actions/workflows/ci.yml/badge.svg)](https://github.com/rsportella/isbackup/actions/workflows/ci.yml)
+![Windows, macOS e Linux](https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-000000)
 [![Docker](https://img.shields.io/badge/Docker-pronto-2496ED?logo=docker&logoColor=white)](#opção-2-docker-desktop)
 
 <br />
@@ -52,10 +53,13 @@ Escolha como rodar. As duas formas abrem o mesmo painel, com os mesmos recursos.
 | **Precisa de** | Node.js 22.12+ e o cliente do MySQL | Só o [Docker Desktop](https://www.docker.com/products/docker-desktop/) |
 | **Instala algo no sistema?** | Node e `mysql-client` | Nada: tudo fica dentro do container |
 | **Onde ficam os backups** | Na pasta que você escolher no painel (padrão: `./backups`) | Na pasta que você escolher na primeira vez (padrão: `./docker-data`) |
-| **Quem agenda os backups** | O `cron` do seu usuário | Um `cron` dentro do container |
-| **Bom para** | Quem já tem Node, ou servidores Linux | Quem quer começar sem instalar nada |
+| **Quem agenda os backups** | O `cron` (macOS/Linux) ou o Agendador de Tarefas (Windows) | Um `cron` dentro do container |
+| **Funciona em** | Windows, macOS e Linux | Windows, macOS e Linux (onde o Docker roda) |
+| **Bom para** | Quem já tem Node, ou servidores | Quem quer começar sem instalar nada |
 
 ### Opção 1: direto na máquina
+
+**macOS e Linux**
 
 ```bash
 git clone https://github.com/rsportella/isbackup.git
@@ -63,23 +67,40 @@ cd isbackup
 ./run.sh
 ```
 
-O `./run.sh` instala as dependências, compila, sobe o painel em **http://127.0.0.1:8787** e já o
-abre no navegador. Se houver uma versão anterior rodando na mesma porta, ele a substitui. Para
-outra porta: `./run.sh --port 9000`. Para não abrir o navegador: `./run.sh --no-open`.
+**Windows** (Prompt de Comando ou PowerShell; ou baixe o ZIP do repositório e dê **dois cliques** no
+`run.cmd`)
+
+```bat
+git clone https://github.com/rsportella/isbackup.git
+cd isbackup
+run.cmd
+```
+
+O script instala as dependências, compila, sobe o painel em **http://127.0.0.1:8787** e já o abre
+no navegador. Para outra porta: `--port 9000`. Para não abrir o navegador: `--no-open`. No
+macOS/Linux, o `./run.sh` também substitui uma versão anterior que esteja rodando na mesma porta.
 
 <details>
 <summary><strong>Requisitos</strong></summary>
 
-- **Node.js 22.12 ou mais novo**
-- **macOS ou Linux**, com `crontab` (já vem nos dois)
+- **Node.js 22.12 ou mais novo** ([nodejs.org](https://nodejs.org))
+- **Windows 10 (1803) ou mais novo**, **macOS** ou **Linux**
 - Para jobs de banco, o cliente do MySQL (`mysqldump` e `mysql`):
-  - macOS: `brew install mysql-client`. O isbackup acha o binário mesmo fora do `PATH`, inclusive quando roda pelo cron.
-  - Debian/Ubuntu: `sudo apt install default-mysql-client`
-- Para jobs de arquivos: nada além do `tar`, que já vem no sistema.
+  - **Windows:** o [MySQL Installer](https://dev.mysql.com/downloads/installer/) ou o
+    [instalador do MariaDB](https://mariadb.org/download/). O isbackup procura sozinho em
+    `C:\Program Files\MySQL\…\bin`, `C:\Program Files\MariaDB …\bin` e no XAMPP, mesmo fora do `PATH`.
+  - **macOS:** `brew install mysql-client`. O isbackup acha o binário mesmo fora do `PATH`, inclusive quando roda pelo cron.
+  - **Debian/Ubuntu:** `sudo apt install default-mysql-client` · **Fedora:** `sudo dnf install mariadb`
+- Para jobs de arquivos: nada além do `tar`, que já vem no sistema (no Windows, o `tar.exe` nativo).
+- **Linux:** o `cron` precisa estar instalado e ativo. Distribuições mínimas às vezes vêm sem ele
+  (`sudo apt install cron` · `sudo dnf install cronie`); o painel avisa quando ele não é encontrado.
 
 </details>
 
 ### Opção 2: Docker Desktop
+
+> **No Windows**, o `./docker.sh` precisa de um terminal bash (Git Bash ou WSL). Sem ele, use
+> `docker compose up -d` e abra http://localhost:8787 — os dados ficam em `.\docker-data`.
 
 Com o [Docker Desktop](https://www.docker.com/products/docker-desktop/) aberto (não precisa de
 Colima nem de mais nada):
@@ -138,7 +159,7 @@ A imagem já traz tudo: Node, `mysqldump` e `mysql`, `tar` e o `cron`. Testado d
 1. Clique em **Novo job** e escolha **Banco de dados** ou **Arquivos (SFTP/FTP)**.
 2. Preencha a conexão e clique em **Testar conexão**.
 3. Escolha a rotina (diária, a cada N horas, dias úteis…) e clique em **Salvar**.
-4. Clique em **Instalar rotina no cron**. Pronto: os backups passam a rodar sozinhos.
+4. Clique em **Instalar rotina** (no cron, ou no Agendador do Windows). Pronto: os backups passam a rodar sozinhos.
 
 > No primeiro uso é criado um `config.yaml` vazio. A chave que cifra as senhas é gerada no `.env`
 > quando você salva o primeiro job. Nenhum dos dois vai para o git.
@@ -199,8 +220,15 @@ flowchart LR
   LOG --> UI
 ```
 
-Cada job vira uma linha no crontab, marcada para o isbackup poder atualizar ou remover só as dele sem
-mexer no resto. Na hora agendada, o cron chama `isbackup run <job>`, que grava o backup em
+O agendamento usa o que já existe em cada sistema:
+
+- **macOS e Linux:** cada job vira uma linha no `crontab` do seu usuário, marcada para o isbackup
+  poder atualizar ou remover só as dele sem mexer no resto.
+- **Windows:** uma tarefa `isbackup` no **Agendador de Tarefas**, que roda a cada minuto, sem abrir
+  janela, e chama `isbackup tick`. O tick dispara os jobs cujo horário chegou. Qualquer rotina que
+  funciona no cron (listas de horas, dias da semana, `*/15`…) funciona igual no Windows.
+
+Na hora agendada, `isbackup run <job>` grava o backup em
 `backups/<job>/<job>_AAAAMMDD_HHMMSS.sql.gz` (ou `.tar.gz`), aplica a retenção e registra tudo no log
 do job. O painel só lê esses mesmos arquivos. Não há nenhum estado escondido.
 
@@ -286,9 +314,10 @@ isbackup list                      # lista os jobs
 isbackup run <job>                 # roda um job agora
 isbackup run --all                 # roda todos
 isbackup run <job> --dry-run       # mostra o que faria, sem executar
-isbackup cron install [--dry-run]  # instala/atualiza as rotinas no crontab
-isbackup cron status               # mostra o que está instalado
-isbackup cron uninstall            # remove só as linhas do isbackup
+isbackup cron install [--dry-run]  # instala/atualiza as rotinas (cron; no Windows, Agendador de Tarefas)
+isbackup cron status               # mostra o que está agendado
+isbackup cron uninstall            # remove só as rotinas do isbackup
+isbackup tick [--dry-run]          # roda os jobs do minuto atual (o que o Agendador do Windows chama)
 isbackup encrypt "senha"           # cifra uma senha para o config.yaml
 isbackup init                      # cria config.yaml e .env a partir dos exemplos
 ```
@@ -327,8 +356,9 @@ isbackup init                      # cria config.yaml e .env a partir dos exempl
 ## Limitações
 
 - Bancos suportados: MySQL e MariaDB (via `mysqldump`).
-- O agendamento depende do `cron`. No Windows, o caminho seria o modo Docker, mas isso ainda não
-  foi testado.
+- No Windows, a tarefa do Agendador é do seu usuário: as rotinas rodam enquanto você estiver
+  conectado ao Windows (como no macOS, o computador precisa estar ligado e acordado; o *self-heal*
+  do painel recupera horários perdidos).
 - Editar pelo painel regrava o `config.yaml` e descarta comentários escritos à mão.
 
 ## Desenvolvimento
@@ -348,6 +378,7 @@ src/
   dump.ts             backup de banco (mysqldump)
   file-backup.ts      backup de arquivos (SFTP/FTP + tar)
   backups.ts          listagem, retenção e gravação via .partial
+  scheduler.ts        agendamento por sistema: cron (macOS/Linux) e Agendador de Tarefas (Windows)
   cron.ts             geração e instalação das linhas do crontab
   run-lock.ts         lock entre processos e cancelamento
   crypto.ts           cifra das senhas (AES-256-GCM)
@@ -356,7 +387,9 @@ public/               painel (HTML, CSS e JS puros, sem build)
 Dockerfile            imagem: Node + cliente MySQL + cron; dados em /data (ISBACKUP_HOME)
 compose.yaml          sobe o container no Docker Desktop
 docker.sh             sobe pelo Docker: pergunta onde guardar os dados e abre o navegador
-run.sh                sobe direto na máquina e abre o navegador
+run.sh                sobe direto na máquina e abre o navegador (macOS/Linux)
+run.cmd               o mesmo no Windows (dá pra abrir com dois cliques)
+.github/workflows/    CI: testes em Windows, Linux e macOS + teste real do Agendador do Windows
 docker/               entrypoint do container e atalho da CLI
 test/                 testes; usam diretórios temporários e nunca tocam nos seus arquivos reais
 ```

@@ -8,7 +8,7 @@ import { restrictToOwner, upsertEnvVar } from "../src/env-writer.ts";
 import { createJobLogger, LOG_ROTATE_BYTES, readLastLines } from "../src/job-log.ts";
 import { buildMysqlOptionsFileContent, writeMysqlOptionsFile } from "../src/mysql-credentials.ts";
 import { computeSizeTrend } from "../src/web/api.ts";
-import { fileMode, quietly, tempDir } from "./helpers.ts";
+import { assertMode, quietly, tempDir } from "./helpers.ts";
 
 const dir = tempDir();
 
@@ -18,14 +18,14 @@ describe("config.yaml", () => {
     fs.writeFileSync(cfg, "jobs: []\n", { mode: 0o640 });
     writeRawConfig(cfg, { jobs: [{ name: "a", schedule: "daily", host: undefined }] });
     assert.deepEqual(readRawConfig(cfg).jobs, [{ name: "a", schedule: "daily" }]);
-    assert.equal(fileMode(cfg), 0o640);
+    assertMode(cfg, 0o640);
     assert.deepEqual(fs.readdirSync(dir).filter((f) => f.endsWith(".tmp")), []);
   });
 
   it("config novo nasce 600", () => {
     const cfg = path.join(dir, "novo.yaml");
     writeRawConfig(cfg, { jobs: [] });
-    assert.equal(fileMode(cfg), 0o600);
+    assertMode(cfg, 0o600);
   });
 });
 
@@ -34,7 +34,7 @@ describe(".env", () => {
     const env = path.join(dir, ".env");
     fs.writeFileSync(env, "A=1\nISB_TEST=velho\n", { mode: 0o644 });
     upsertEnvVar(env, "ISB_TEST", 'novo "valor"');
-    assert.equal(fileMode(env), 0o600);
+    assertMode(env, 0o600);
     assert.equal(fs.readFileSync(env, "utf8"), 'A=1\nISB_TEST="novo \\"valor\\""\n');
     assert.equal(process.env.ISB_TEST, 'novo "valor"');
   });
@@ -43,7 +43,7 @@ describe(".env", () => {
     const f = path.join(dir, "aberto");
     fs.writeFileSync(f, "x", { mode: 0o644 });
     restrictToOwner(f);
-    assert.equal(fileMode(f), 0o600);
+    assertMode(f, 0o600);
     restrictToOwner(path.join(dir, "nao-existe")); // nao lanca
   });
 });
@@ -71,7 +71,7 @@ describe("option file do MySQL", () => {
     const conn = { host: "h", port: 3306, user: "u", password: "p" };
     const file = writeMysqlOptionsFile(conn, "teste");
     try {
-      assert.equal(fileMode(file), 0o600);
+      assertMode(file, 0o600);
       assert.equal(fs.readFileSync(file, "utf8"), buildMysqlOptionsFileContent(conn));
       assert.match(buildMysqlOptionsFileContent(conn), /^\[client\]\nhost=h\nport=3306\nuser=u\npassword=p\n$/);
     } finally {

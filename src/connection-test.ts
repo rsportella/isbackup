@@ -23,6 +23,7 @@ export function testDatabaseConnection(conn: MysqlConnection): Promise<void> {
     const child = spawn("mysql", [`--defaults-extra-file=${file}`, "--connect-timeout=5", "-e", "SELECT 1"], {
       stdio: ["ignore", "pipe", "pipe"],
       env: spawnEnvWithFallbackPath(),
+      windowsHide: true,
     });
 
     let stderrOutput = "";

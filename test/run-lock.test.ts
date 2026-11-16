@@ -57,7 +57,6 @@ describe("lock de execucao", () => {
 
   it("varios processos ao mesmo tempo: so um pega o lock", async () => {
     const runLock = fileURLToPath(new URL("../src/run-lock.ts", import.meta.url));
-    const tsx = fileURLToPath(new URL("../node_modules/.bin/tsx", import.meta.url));
     const script =
       `import(${JSON.stringify(runLock)}).then((m) => {` +
       ` try { m.writeRunLock({ name: "race", outputDir: ${JSON.stringify(dir)} }); console.log("GOT"); setTimeout(() => {}, 800); }` +
@@ -65,7 +64,8 @@ describe("lock de execucao", () => {
     const run = () =>
       new Promise<string>((resolve) => {
         let out = "";
-        const child = spawn(tsx, ["--input-type=module", "-e", script]);
+        // node --import tsx (e nao node_modules/.bin/tsx, que no Windows e um .cmd)
+        const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script]);
         child.stdout.on("data", (d) => (out += d));
         child.on("exit", () => resolve(out.trim()));
       });

@@ -341,30 +341,48 @@ function stopPolling() {
   }
 }
 
+// Nome do agendador deste sistema ("cron" no macOS/Linux, "Agendador do Windows"), vindo da API.
+let schedulerName = "cron";
+
+/** "no cron" / "no Agendador do Windows" (genero do artigo segue o nome). */
+function inScheduler() {
+  return schedulerName === "cron" ? "no cron" : `no ${schedulerName}`;
+}
+
 async function loadCronStatus() {
   const badge = document.getElementById("cron-badge");
   const btn = document.getElementById("cron-toggle-btn");
   try {
     const status = await apiFetch("/api/cron/status");
-    if (status.installed && status.stale) {
-      badge.textContent = "Cron desatualizado";
+    schedulerName = status.name || "cron";
+    const label = schedulerName === "cron" ? "Cron" : schedulerName;
+    badge.removeAttribute("data-tooltip");
+    btn.hidden = false;
+    if (status.unavailable) {
+      // Ex: Linux sem o pacote cron: explica o que instalar em vez de oferecer um botao que falharia.
+      badge.textContent = `${label} não encontrado`;
+      badge.className = "badge badge-error tooltip-bottom";
+      badge.dataset.tooltip = status.unavailable;
+      btn.hidden = true;
+    } else if (status.installed && status.stale) {
+      badge.textContent = `${label} desatualizado`;
       badge.className = "badge badge-running";
-      btn.textContent = "Atualizar cron";
+      btn.textContent = schedulerName === "cron" ? "Atualizar cron" : "Atualizar agendamento";
       btn.dataset.action = "install";
     } else if (status.installed) {
       const n = status.lines.length;
-      badge.textContent = `Cron instalado (${n} job${n === 1 ? "" : "s"})`;
+      badge.textContent = schedulerName === "cron" ? `Cron instalado (${n} job${n === 1 ? "" : "s"})` : `Agendado no Windows (${n} job${n === 1 ? "" : "s"})`;
       badge.className = "badge badge-ok";
-      btn.textContent = "Remover do cron";
+      btn.textContent = `Remover ${schedulerName === "cron" ? "do cron" : "do Agendador"}`;
       btn.dataset.action = "uninstall";
     } else {
-      badge.textContent = "Cron nao instalado";
+      badge.textContent = schedulerName === "cron" ? "Cron não instalado" : "Agendamento não instalado";
       badge.className = "badge badge-off";
-      btn.textContent = "Instalar rotina no cron";
+      btn.textContent = `Instalar rotina ${inScheduler()}`;
       btn.dataset.action = "install";
     }
   } catch (err) {
-    badge.textContent = "Cron: erro ao consultar";
+    badge.textContent = "Agendamento: erro ao consultar";
     badge.className = "badge badge-error";
     showToast(err.message, true);
   }
@@ -1373,8 +1391,8 @@ document.getElementById("cron-toggle-btn").addEventListener("click", async (e) =
   if (
     action === "uninstall" &&
     !(await confirmDialog({
-      title: "Remover do cron?",
-      message: "As rotinas do isbackup saem do crontab e os backups deixam de rodar automaticamente.",
+      title: `Remover ${schedulerName === "cron" ? "do cron" : "do Agendador"}?`,
+      message: `As rotinas do isbackup saem ${inScheduler()} e os backups deixam de rodar automaticamente.`,
       confirmLabel: "Remover",
       destructive: true,
     }))
@@ -1382,7 +1400,7 @@ document.getElementById("cron-toggle-btn").addEventListener("click", async (e) =
     return;
   try {
     await apiFetch(`/api/cron/${action}`, { method: "POST" });
-    showToast(action === "install" ? "Rotina instalada no cron." : "Rotina removida do cron.");
+    showToast(action === "install" ? `Rotina instalada ${inScheduler()}.` : `Rotina removida ${inScheduler()}.`);
     await loadCronStatus();
   } catch (err) {
     showToast(err.message, true);
@@ -1426,9 +1444,9 @@ const settingsForm = document.getElementById("settings-form");
 const settingsError = document.getElementById("settings-error");
 let settingsPoll = null;
 
-/** Encurta a pasta pessoal pra "~" (macOS /Users/x, Linux /home/x). */
+/** Encurta a pasta pessoal pra "~" (macOS /Users/x, Linux /home/x, Windows C:\Users\x). */
 function shortenPath(p) {
-  return p.replace(/^\/(Users|home)\/[^/]+(?=\/|$)/, "~");
+  return p.replace(/^\/(Users|home)\/[^/]+(?=\/|$)/, "~").replace(/^[A-Za-z]:\\Users\\[^\\]+(?=\\|$)/i, "~");
 }
 
 /** Pasta como o usuario a enxerga no proprio computador (no Docker, a pasta do host). */
@@ -1463,6 +1481,7 @@ function renderSettingsModal() {
   document.getElementById("settings-current-meta").textContent = meta.join(" · ");
 
   document.getElementById("settings-editable").hidden = s.docker;
+  if (s.exampleDir) document.getElementById("settings-dir").placeholder = s.exampleDir;
   document.getElementById("settings-docker").hidden = !s.docker;
   document.getElementById("settings-save").hidden = s.docker;
 

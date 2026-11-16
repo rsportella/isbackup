@@ -1,0 +1,9 @@
+# Quebras de linha fixas por tipo de arquivo, independente do sistema de quem clona:
+# scripts de shell precisam de LF (inclusive dentro do container Docker, montado a partir de um
+# clone no Windows) e os .cmd precisam de CRLF para o Prompt de Comando.
+* text=auto
+*.sh text eol=lf
+docker/* text eol=lf
+Dockerfile text eol=lf
+*.cmd text eol=crlf
+*.png binary

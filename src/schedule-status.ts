@@ -34,6 +34,20 @@ export function computeScheduleStatus(resolvedCronExpression: string, lastBackup
   return { health, expectedSince: expectedSince.toISOString() };
 }
 
+/**
+ * O horario desta expressao cron cai neste minuto? Usado pelo "isbackup tick" (Windows), que roda a
+ * cada minuto e dispara os jobs devidos — o mesmo que o cron faz sozinho em macOS/Linux.
+ */
+export function isDueAt(resolvedCronExpression: string, now: Date = new Date()): boolean {
+  const minuteStart = Math.floor(now.getTime() / 60_000) * 60_000;
+  try {
+    const next = parseAt(resolvedCronExpression, new Date(minuteStart - 1)).next().toDate().getTime();
+    return next === minuteStart;
+  } catch {
+    return false;
+  }
+}
+
 /** Proxima execucao agendada (ISO), para mostrar uma contagem regressiva. */
 export function computeNextRun(resolvedCronExpression: string): string | null {
   try {

@@ -26,10 +26,14 @@ export function currentBackupDir(raw: RawConfig, configPath: string): string {
 export function hostPathFor(containerPath: string): string | null {
   if (!isDocker()) return containerPath;
   const hostData = process.env.ISBACKUP_HOST_DATA;
-  const dataDir = path.resolve(process.env.ISBACKUP_HOME ?? "/data");
-  const rel = path.relative(dataDir, containerPath);
-  if (!hostData || !path.isAbsolute(hostData) || rel.startsWith("..") || path.isAbsolute(rel)) return null;
-  return path.join(hostData, rel);
+  // Dentro do container (sempre Linux) os caminhos sao posix; o do host pode ser de qualquer sistema.
+  const dataDir = path.posix.resolve(process.env.ISBACKUP_HOME ?? "/data");
+  const rel = path.posix.relative(dataDir, containerPath);
+  if (!hostData || rel.startsWith("..") || path.posix.isAbsolute(rel)) return null;
+  const hostIsWindows = /^[A-Za-z]:[\\/]/.test(hostData);
+  if (!hostIsWindows && !hostData.startsWith("/")) return null;
+  const hostPath = hostIsWindows ? path.win32 : path.posix;
+  return rel ? hostPath.join(hostData, ...rel.split("/")) : hostData;
 }
 
 /** "~/x" e "~" viram a pasta do usuario; o resultado precisa ser um caminho absoluto. */
@@ -38,7 +42,7 @@ export function normalizeUserPath(input: string): string {
   if (!p) throw new SettingsError("Informe a pasta onde guardar os backups.");
   if (p === "~" || p.startsWith("~/")) p = path.join(os.homedir(), p.slice(1));
   if (!path.isAbsolute(p)) {
-    throw new SettingsError('Use o caminho completo da pasta (ex: "/Volumes/HD Externo/Backups" ou "~/Backups").');
+    throw new SettingsError(`Use o caminho completo da pasta (ex: ${exampleDir()} ou ~/Backups).`);
   }
   return path.resolve(p);
 }
@@ -76,25 +80,59 @@ export function freeBytes(dir: string): number | null {
   }
 }
 
-/** Sugestoes pro campo: pasta no usuario e, no macOS, os discos externos montados em /Volumes. */
-export function suggestedDirs(): string[] {
+/** Exemplo de pasta no formato do sistema (texto de ajuda e placeholder do painel). */
+export function exampleDir(platform: NodeJS.Platform = process.platform): string {
+  if (platform === "win32") return "D:\\Backups\\isbackup";
+  if (platform === "darwin") return "/Volumes/HD Externo/Backups";
+  return "/mnt/hd-externo/backups";
+}
+
+function isWritableDir(dir: string): boolean {
+  try {
+    if (!fs.statSync(dir).isDirectory()) return false;
+    fs.accessSync(dir, fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Sugestoes pro campo: uma pasta no usuario e os discos externos conectados — /Volumes no macOS,
+ * /media e /mnt no Linux, as outras unidades (D:, E:...) no Windows. So entram locais gravaveis.
+ */
+export function suggestedDirs(platform: NodeJS.Platform = process.platform): string[] {
   const out = [path.join(os.homedir(), "Backups", "isbackup")];
-  if (process.platform === "darwin") {
+  const subdirs = (dir: string) => {
     try {
-      for (const vol of fs.readdirSync("/Volumes")) {
-        const full = path.join("/Volumes", vol);
-        // O disco do sistema aparece em /Volumes como um link pra "/": nao e um disco externo.
-        if (fs.realpathSync(full) === "/") continue;
-        // Instaladores .dmg montados (ex: /Volumes/Slack) sao somente leitura: nao servem.
-        try {
-          fs.accessSync(full, fs.constants.W_OK);
-        } catch {
-          continue;
-        }
-        out.push(path.join(full, "isbackup"));
-      }
+      return fs.readdirSync(dir).map((name) => path.join(dir, name));
     } catch {
-      // sem /Volumes legivel
+      return [];
+    }
+  };
+
+  if (platform === "darwin") {
+    for (const vol of subdirs("/Volumes")) {
+      try {
+        // O disco do sistema aparece em /Volumes como um link pra "/": nao e um disco externo.
+        if (fs.realpathSync(vol) === "/") continue;
+      } catch {
+        continue;
+      }
+      // Instaladores .dmg montados (ex: /Volumes/Slack) sao somente leitura: nao servem.
+      if (isWritableDir(vol)) out.push(path.join(vol, "isbackup"));
+    }
+  } else if (platform === "linux") {
+    // /media/<usuario>/<disco> (montagem automatica) e /mnt/<disco>
+    const user = os.userInfo().username;
+    for (const disk of [...subdirs(path.join("/media", user)), ...subdirs("/mnt")]) {
+      if (isWritableDir(disk)) out.push(path.join(disk, "isbackup"));
+    }
+  } else if (platform === "win32") {
+    const systemDrive = (process.env.SystemDrive ?? "C:").toUpperCase();
+    for (const letter of "DEFGHIJKLMNOPQRSTUVWXYZ") {
+      const drive = letter + ":\\";
+      if (letter + ":" !== systemDrive && isWritableDir(drive)) out.push(path.join(drive, "isbackup"));
     }
   }
   return out;

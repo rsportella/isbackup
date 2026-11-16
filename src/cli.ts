@@ -9,14 +9,9 @@ import { loadConfig } from "./config.js";
 import { runJobBackup } from "./backup-runner.js";
 import { RunAlreadyActiveError } from "./run-lock.js";
 import { logger } from "./logger.js";
-import {
-  buildNewCrontab,
-  applyCrontab,
-  readCurrentCrontab,
-  extractManagedBlock,
-  resolveSchedule,
-  type CronContext,
-} from "./cron.js";
+import { resolveSchedule, type CronContext } from "./cron.js";
+import { getScheduler } from "./scheduler.js";
+import { isDueAt } from "./schedule-status.js";
 import type { JobConfig } from "./types.js";
 import { createApp } from "./web/server.js";
 import { startCatchUpScheduler } from "./web/catchup.js";
@@ -168,65 +163,91 @@ withConfigOption(program.command("run [jobName]"))
     }
   });
 
-const cron = program.command("cron").description("Gerencia a instalacao das rotinas no crontab do usuario");
+// "cron" por historico: em macOS/Linux e o crontab; no Windows, o Agendador de Tarefas (scheduler.ts).
+const scheduler = getScheduler();
+const cron = program
+  .command("cron")
+  .description(`Gerencia o agendamento das rotinas (neste sistema: ${scheduler.name})`);
+
+function schedulerCtx(configPath: string): CronContext {
+  return { projectRoot, configPath: path.resolve(configPath), logDir: DEFAULT_LOG_DIR };
+}
 
 withConfigOption(cron.command("install"))
-  .description("Escreve/atualiza as entradas do crontab com base no schedule de cada job")
-  .option("--dry-run", "mostra o crontab resultante sem aplicar")
+  .description("Instala/atualiza o agendamento com base na rotina de cada job")
+  .option("--dry-run", "mostra o que seria instalado, sem aplicar")
   .action((opts: { config: string; dryRun?: boolean }) => {
     const jobs = loadConfig(opts.config);
     if (jobs.length === 0) {
       logger.warn("Nenhum job configurado, nada a instalar.");
       return;
     }
-
-    const ctx: CronContext = {
-      projectRoot,
-      configPath: path.resolve(opts.config),
-      logDir: DEFAULT_LOG_DIR,
-    };
-    const newCrontab = buildNewCrontab(jobs, ctx);
+    const ctx = schedulerCtx(opts.config);
 
     if (opts.dryRun) {
-      console.log(newCrontab);
-      logger.info("[dry-run] crontab acima NAO foi aplicado. Rode sem --dry-run para instalar.");
+      console.log(scheduler.preview(jobs, ctx));
+      logger.info(`[dry-run] nada foi aplicado no ${scheduler.name}. Rode sem --dry-run para instalar.`);
       return;
     }
 
     fs.mkdirSync(ctx.logDir, { recursive: true });
-    applyCrontab(newCrontab);
-    logger.info(`Crontab atualizado com ${jobs.length} job(s). Logs em ${ctx.logDir}`);
+    scheduler.install(jobs, ctx);
+    logger.info(`${scheduler.name} atualizado com ${jobs.filter((j) => !j.paused).length} job(s). Logs em ${ctx.logDir}`);
   });
 
-cron
-  .command("uninstall")
-  .description("Remove as entradas gerenciadas pelo isbackup do crontab")
-  .option("--dry-run", "mostra o crontab resultante sem aplicar")
-  .action((opts: { dryRun?: boolean }) => {
-    const ctx: CronContext = { projectRoot, configPath: DEFAULT_CONFIG_PATH, logDir: DEFAULT_LOG_DIR };
-    const newCrontab = buildNewCrontab([], ctx);
-
+withConfigOption(cron.command("uninstall"))
+  .description("Remove o agendamento das rotinas do isbackup")
+  .option("--dry-run", "mostra o resultado sem aplicar")
+  .action((opts: { config: string; dryRun?: boolean }) => {
+    const ctx = schedulerCtx(opts.config);
     if (opts.dryRun) {
-      console.log(newCrontab || "(crontab ficaria vazio)");
+      console.log(scheduler.preview([], ctx) || "(nada ficaria agendado)");
       logger.info("[dry-run] nada foi aplicado.");
       return;
     }
-
-    applyCrontab(newCrontab);
-    logger.info("Entradas do isbackup removidas do crontab.");
+    scheduler.uninstall(ctx);
+    logger.info(`Rotinas do isbackup removidas do ${scheduler.name}.`);
   });
 
-cron
-  .command("status")
-  .description("Mostra as entradas atualmente instaladas no crontab")
-  .action(() => {
-    const current = readCurrentCrontab();
-    const lines = extractManagedBlock(current);
-    if (lines.length === 0) {
-      logger.info("Nenhum job do isbackup instalado no crontab.");
+withConfigOption(cron.command("status"))
+  .description("Mostra o que esta agendado agora")
+  .action((opts: { config: string }) => {
+    let jobs: JobConfig[] | null = null;
+    try {
+      jobs = loadConfig(opts.config);
+    } catch {
+      // config invalido: mostra o status mesmo assim
+    }
+    const status = scheduler.status(jobs, schedulerCtx(opts.config));
+    if (!status.installed) {
+      logger.info(`Nenhuma rotina do isbackup instalada no ${status.name}.`);
       return;
     }
-    for (const line of lines) console.log(line);
+    for (const line of status.lines) console.log(line);
+    if (status.stale) logger.warn(`O ${status.name} esta desatualizado: rode "isbackup cron install".`);
+  });
+
+// Chamado pelo Agendador do Windows a cada minuto (ver scheduler.ts). Funciona em qualquer sistema.
+withConfigOption(program.command("tick"))
+  .description("Roda os jobs ativos cujo horario e agora (usado pelo Agendador do Windows a cada minuto)")
+  .option("--dry-run", "mostra quais jobs rodariam, sem executar")
+  .action(async (opts: { config: string; dryRun?: boolean }) => {
+    const now = new Date();
+    const due = loadConfig(opts.config).filter((j) => !j.paused && isDueAt(resolveSchedule(j.schedule), now));
+    const results = await Promise.allSettled(
+      due.map((job) => runJobBackup(job, { dryRun: opts.dryRun, logDir: DEFAULT_LOG_DIR })),
+    );
+    let failures = 0;
+    results.forEach((r, i) => {
+      if (r.status === "fulfilled") return;
+      if (r.reason instanceof RunAlreadyActiveError) {
+        logger.warn((r.reason as Error).message);
+        return;
+      }
+      failures += 1;
+      logger.error(`Job "${due[i].name}" falhou: ${(r.reason as Error).message}`);
+    });
+    if (failures > 0) process.exitCode = 1;
   });
 
 withConfigOption(program.command("ui"))
@@ -245,11 +266,22 @@ withConfigOption(program.command("ui"))
     }
 
     const app = createApp({ configPath: opts.config, projectRoot, logDir: DEFAULT_LOG_DIR, envPath: ENV_PATH });
-    app.listen(port, opts.host, () => {
+    const server = app.listen(port, opts.host, () => {
       const shown = opts.host === "0.0.0.0" ? "127.0.0.1" : opts.host;
       const url = `http://${shown}:${port}`;
       logger.info(`Interface web em ${url} (sem login: nao exponha essa porta na rede)`);
       if (opts.open) openInBrowser(url);
+    });
+    server.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE") {
+        logger.error(
+          `A porta ${port} ja esta em uso (o isbackup ja esta aberto em outra janela?). ` +
+            `Feche a outra instancia ou use outra porta: --port ${port + 1}`,
+        );
+      } else {
+        logger.error(`Nao foi possivel iniciar o painel: ${err.message}`);
+      }
+      process.exit(1);
     });
 
     // Rede de seguranca: enquanto a UI estiver de pe, cobre o caso do cron ter pulado um
