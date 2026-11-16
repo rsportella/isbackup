@@ -1,8 +1,23 @@
 {
   "name": "isbackup",
   "version": "1.0.0",
-  "description": "Sistema de backup (dump) de bancos MySQL/MariaDB, configuravel por arquivo, com rotinas via cron",
+  "description": "Backups de MySQL/MariaDB e de arquivos via SFTP/FTP, configurados num YAML, agendados no cron e acompanhados por um painel web local",
+  "keywords": [
+    "backup",
+    "mysql",
+    "mariadb",
+    "mysqldump",
+    "sftp",
+    "ftp",
+    "cron",
+    "dashboard"
+  ],
+  "author": "Rodolfo Portella",
+  "license": "ISC",
   "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
   "bin": {
     "isbackup": "./dist/cli.js"
   },
@@ -10,11 +25,10 @@
     "build": "tsc",
     "start": "node dist/cli.js",
     "dev": "tsx src/cli.ts",
-    "ui": "node dist/cli.js ui"
+    "ui": "node dist/cli.js ui",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "test": "tsx --test test/*.test.ts"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
     "basic-ftp": "^6.2.1",
     "commander": "^15.0.0",

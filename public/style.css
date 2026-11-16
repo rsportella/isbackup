@@ -62,50 +62,52 @@
   --spring: cubic-bezier(0.32, 1.28, 0.6, 1);
   --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
 
-  color-scheme: light dark;
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #000000;
-    --surface: #1c1c1e;
-    --surface-raised: #2c2c2e;
-    --fill: rgba(118, 118, 128, 0.24);
-    --fill-strong: rgba(118, 118, 128, 0.36);
-    --separator: rgba(84, 84, 88, 0.6);
+/* Tema escuro. O atributo e definido por um script no <head> antes da pintura (sem piscar):
+   data-theme="dark" quando o usuario escolhe Escuro, ou escolhe Automatico com o sistema em
+   modo escuro. A preferencia (auto/claro/escuro) fica no navegador. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #000000;
+  --surface: #1c1c1e;
+  --surface-raised: #2c2c2e;
+  --fill: rgba(118, 118, 128, 0.24);
+  --fill-strong: rgba(118, 118, 128, 0.36);
+  --separator: rgba(84, 84, 88, 0.6);
 
-    --text: #f5f5f7;
-    --text-muted: #a1a1a6;
-    --text-faint: #8e8e93;
+  --text: #f5f5f7;
+  --text-muted: #a1a1a6;
+  --text-faint: #8e8e93;
 
-    --blue: #0a84ff;
-    --green: #30d158;
-    --red: #ff453a;
-    --orange: #ff9f0a;
-    --indigo: #5e5ce6;
-    --teal: #40c8e0;
-    --gray: #8e8e93;
+  --blue: #0a84ff;
+  --green: #30d158;
+  --red: #ff453a;
+  --orange: #ff9f0a;
+  --indigo: #5e5ce6;
+  --teal: #40c8e0;
+  --gray: #8e8e93;
 
-    --blue-text: #409cff;
-    --green-text: #30d158;
-    --red-text: #ff6961;
-    --orange-text: #ffb340;
+  --blue-text: #409cff;
+  --green-text: #30d158;
+  --red-text: #ff6961;
+  --orange-text: #ffb340;
 
-    --blue-soft: rgba(10, 132, 255, 0.22);
-    --green-soft: rgba(48, 209, 88, 0.2);
-    --red-soft: rgba(255, 69, 58, 0.2);
-    --orange-soft: rgba(255, 159, 10, 0.2);
+  --blue-soft: rgba(10, 132, 255, 0.22);
+  --green-soft: rgba(48, 209, 88, 0.2);
+  --red-soft: rgba(255, 69, 58, 0.2);
+  --orange-soft: rgba(255, 159, 10, 0.2);
 
-    --glass: rgba(22, 22, 24, 0.7);
-    --glass-menu: rgba(44, 44, 46, 0.8);
-    --glass-border: rgba(255, 255, 255, 0.1);
-    --scrim: rgba(0, 0, 0, 0.55);
+  --glass: rgba(22, 22, 24, 0.7);
+  --glass-menu: rgba(44, 44, 46, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --scrim: rgba(0, 0, 0, 0.55);
 
-    --shadow-card: 0 0 0 0.5px rgba(255, 255, 255, 0.08);
-    --shadow-card-hover: 0 0 0 0.5px rgba(255, 255, 255, 0.16), 0 14px 34px rgba(0, 0, 0, 0.5);
-    --shadow-pop: 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 12px 40px rgba(0, 0, 0, 0.6);
-    --shadow-sheet: 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 30px 80px rgba(0, 0, 0, 0.7);
-  }
+  --shadow-card: 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+  --shadow-card-hover: 0 0 0 0.5px rgba(255, 255, 255, 0.16), 0 14px 34px rgba(0, 0, 0, 0.5);
+  --shadow-pop: 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 12px 40px rgba(0, 0, 0, 0.6);
+  --shadow-sheet: 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 30px 80px rgba(0, 0, 0, 0.7);
 }
 
 * {
@@ -1450,10 +1452,8 @@ main {
     0 2px 6px rgba(0, 0, 0, 0.14);
 }
 
-@media (prefers-color-scheme: dark) {
-  .segmented-option input:checked + span {
-    background: rgba(118, 118, 128, 0.5);
-  }
+:root[data-theme="dark"] .segmented-option input:checked + span {
+  background: rgba(118, 118, 128, 0.5);
 }
 
 .segmented-option input:focus-visible + span {
@@ -1677,4 +1677,268 @@ main {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ----- Seletor de aparencia ---------------------------------------------------- */
+
+/* Itens com marca de selecao (menu "Aparencia"): check a esquerda, como nos menus do macOS. */
+.dropdown-menu button .menu-check {
+  width: 15px;
+  height: 15px;
+  margin-right: -6px;
+  visibility: hidden;
+  color: var(--text);
+}
+
+.dropdown-menu button[aria-checked="true"] .menu-check {
+  visibility: visible;
+}
+
+.dropdown-menu button .menu-label {
+  flex: 1;
+}
+
+.dropdown-menu .menu-heading {
+  padding: 6px 10px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Troca de tema suave: crossfade via View Transitions (quando o navegador suporta). */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.35s;
+  animation-timing-function: ease;
+}
+
+/* Menu que sairia pela esquerda da tela (ver toggleMenu em app.js): abre a partir do botao. */
+.dropdown-menu.dropdown-menu-align-left {
+  left: 0;
+  right: auto;
+  transform-origin: top left;
+}
+
+/* ----- Onde guardar os backups ------------------------------------------------- */
+
+.link-btn {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--blue-text);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  word-break: break-all;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+.location-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--fill);
+}
+
+.location-glyph {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(170deg, #8e8e93, #636366);
+}
+
+.location-glyph .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.location-info {
+  min-width: 0;
+}
+
+.location-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.location-path {
+  font-size: 15px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.location-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.suggestion-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -4px 0 14px;
+}
+
+.suggestion-chips .btn {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.docker-note p {
+  margin: 0 0 10px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.field-hint code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--fill);
+}
+
+.empty-state .link-btn {
+  font-weight: 600;
+}
+
+/* ----- Rodape de creditos -------------------------------------------------------- */
+
+.app-footer {
+  max-width: 1220px;
+  margin: 0 auto;
+  padding: 28px 20px 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.app-footer::before {
+  content: "";
+  width: min(320px, 60%);
+  height: 0.5px;
+  margin-bottom: 14px;
+  background: var(--separator);
+}
+
+.app-footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+}
+
+.app-footer-brand strong {
+  font-weight: 600;
+}
+
+.app-footer-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(160deg, #5ac8fa 0%, #007aff 52%, #3a47d5 100%);
+}
+
+.app-footer-icon .icon {
+  width: 13px;
+  height: 13px;
+  stroke-width: 2.2;
+}
+
+.app-footer p {
+  margin: 0;
+}
+
+.app-footer p strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.app-footer-sep {
+  margin: 0 6px;
+}
+
+/* O main ja tem respiro no fim; o rodape so encosta nele. */
+main {
+  padding-bottom: 24px;
+}
+
+.app-footer-social {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.social-link {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  background: var(--fill);
+  transition:
+    color 0.2s,
+    background 0.2s,
+    transform 0.2s var(--spring);
+}
+
+.social-link .icon {
+  width: 17px;
+  height: 17px;
+}
+
+.social-link:hover,
+.social-link:focus-visible {
+  color: #fff;
+  transform: translateY(-2px) scale(1.06);
+}
+
+.social-linkedin:hover,
+.social-linkedin:focus-visible {
+  background: #0a66c2;
+}
+
+.social-instagram:hover,
+.social-instagram:focus-visible {
+  background: radial-gradient(circle at 30% 107%, #fdf497 0%, #fd5949 45%, #d6249f 60%, #285aeb 90%);
+}
+
+.social-link:active {
+  transform: scale(0.94);
+}
+
+.social-github:hover,
+.social-github:focus-visible {
+  background: #24292f;
+}
+
+:root[data-theme="dark"] .social-github:hover,
+:root[data-theme="dark"] .social-github:focus-visible {
+  background: #f0f6fc;
+  color: #24292f;
+}
+
+.social-mail:hover,
+.social-mail:focus-visible {
+  background: var(--blue);
 }

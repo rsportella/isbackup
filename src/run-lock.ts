@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { JobConfig } from "./types.js";
+import type { JobLogger } from "./job-log.js";
 
 export interface RunProgress {
   bytesDone: number;
@@ -65,12 +66,47 @@ export class RunCancelledError extends Error {
   }
 }
 
+/** O job ja esta rodando em outro processo (ou neste) — o novo run nao comeca. */
+export class RunAlreadyActiveError extends Error {
+  constructor(jobName: string, pid: number) {
+    super(`Job "${jobName}" ja esta rodando (pid ${pid}); esta execucao foi ignorada.`);
+    this.name = "RunAlreadyActiveError";
+  }
+}
+
+/**
+ * Adquire o lock de execucao do job, de forma exclusiva: o arquivo e criado com a flag "wx",
+ * que falha se ele ja existir — atomico no filesystem. Antes, quem chamava checava readRunLock()
+ * e depois escrevia o lock: dois processos (ex: o cron e o self-heal da UI no mesmo minuto)
+ * podiam passar os dois pela checagem e rodar o mesmo dump em paralelo, um sobrescrevendo o
+ * lock/arquivo do outro.
+ *
+ * Um lock orfao (pid morto: kill -9, queda de energia) e descartado e a aquisicao e refeita.
+ * Lanca RunAlreadyActiveError se outro run vivo segura o lock — nesse caso nada foi alterado,
+ * entao quem chamou nao deve limpar o lock/cancelamento (eles pertencem ao outro run).
+ */
 export function writeRunLock(job: JobConfig): void {
-  // Remove qualquer pedido de cancelamento deixado por um run anterior — senao um "Parar" de uma
-  // execucao passada cancelaria essa nova instantaneamente.
-  clearCancelRequest(job);
   const lock: RunLock = { pid: process.pid, startedAt: new Date().toISOString() };
-  fs.writeFileSync(lockFilePath(job), JSON.stringify(lock));
+  const file = lockFilePath(job);
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      fs.writeFileSync(file, JSON.stringify(lock), { flag: "wx" });
+      // So depois de garantir o lock: remove qualquer pedido de cancelamento deixado por um run
+      // anterior — senao um "Parar" de uma execucao passada cancelaria essa nova na hora.
+      clearCancelRequest(job);
+      return;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      const holder = readRunLock(job);
+      if (holder) throw new RunAlreadyActiveError(job.name, holder.pid);
+      // Lock ilegivel mas recem-criado: o outro processo pode estar no meio da escrita (o arquivo
+      // ja existe, o JSON ainda nao). Nao e orfao — nao apaga.
+      if (isFreshFile(file)) throw new RunAlreadyActiveError(job.name, -1);
+      fs.rmSync(file, { force: true }); // lock orfao (pid morto) — descarta e tenta de novo
+    }
+  }
+  throw new RunAlreadyActiveError(job.name, -1);
 }
 
 export function clearRunLock(job: JobConfig): void {
@@ -100,6 +136,31 @@ export function updateRunPhase(job: JobConfig, phase: RunPhase): void {
     fs.writeFileSync(lockFilePath(job), JSON.stringify(lock));
   } catch {
     // idem — lock pode ter sido removido entre uma atualizacao e outra
+  }
+}
+
+/** writeRunLock + registro no log do job quando o run e ignorado (outro ja esta rodando). */
+export function acquireRunLock(job: JobConfig, jobLog: JobLogger): void {
+  try {
+    writeRunLock(job);
+  } catch (err) {
+    if (err instanceof RunAlreadyActiveError) jobLog.info(err.message);
+    else jobLog.error(`Job "${job.name}": nao foi possivel criar o lock de execucao: ${(err as Error).message}`);
+    throw err;
+  }
+}
+
+function isFreshFile(file: string, maxAgeMs = 5000): boolean {
+  try {
+    const raw = fs.readFileSync(file, "utf8");
+    JSON.parse(raw);
+    return false; // legivel: readRunLock ja decidiu (pid morto = orfao)
+  } catch {
+    try {
+      return Date.now() - fs.statSync(file).mtimeMs < maxAgeMs;
+    } catch {
+      return false;
+    }
   }
 }
 

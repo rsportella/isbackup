@@ -26,8 +26,23 @@ export function upsertEnvVar(envPath: string, key: string, value: string): void 
     lines.push(line);
   }
 
-  fs.writeFileSync(envPath, lines.join("\n").replace(/\n*$/, "\n"), "utf8");
+  fs.writeFileSync(envPath, lines.join("\n").replace(/\n*$/, "\n"), { encoding: "utf8", mode: 0o600 });
+  // `mode` so vale na criacao do arquivo — um .env que ja existia mantem a permissao antiga.
+  restrictToOwner(envPath);
   process.env[key] = value;
+}
+
+/**
+ * Deixa um arquivo legivel so pelo dono (600). O .env guarda a ISBACKUP_ENCRYPTION_KEY, que
+ * decifra todas as senhas do config.yaml — com 644, qualquer usuario da maquina leria a chave.
+ * Nunca derruba quem chamou: e uma protecao extra, nao um requisito pra funcionar.
+ */
+export function restrictToOwner(filePath: string): void {
+  try {
+    if ((fs.statSync(filePath).mode & 0o077) !== 0) fs.chmodSync(filePath, 0o600);
+  } catch {
+    // arquivo inexistente ou sem permissao de chmod — ignora
+  }
 }
 
 /** Le a ISBACKUP_ENCRYPTION_KEY do .env (ja carregado em process.env), ou null se ainda nao existe. */

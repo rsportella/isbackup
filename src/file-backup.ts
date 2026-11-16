@@ -2,10 +2,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import type SftpClient from "ssh2-sftp-client";
+import type { Client as FtpClient } from "basic-ftp";
 import type { FileSourceConfig, FilesJobConfig } from "./types.js";
-import { cleanupOldBackups } from "./backups.js";
+import { cleanupOldBackups, finalizeBackupFile, partialPathFor } from "./backups.js";
 import {
-  writeRunLock,
+  acquireRunLock,
   clearRunLock,
   updateRunProgress,
   updateRunPhase,
@@ -18,7 +20,7 @@ import { createJobLogger } from "./job-log.js";
 import { spawnEnvWithFallbackPath } from "./dump.js";
 import type { RunBackupOptions } from "./dump.js";
 
-interface RemoteFile {
+export interface RemoteFile {
   /** Caminho relativo a remoteDir (posix, com "/"), preservado no .tar.gz — evita colisao de
    * nome entre arquivos de mesmo nome em subpastas diferentes (comum em estruturas de backup
    * datadas, ex: "2026-09-18 (Completo)/dump.zip" e "2026-09-19 (Completo)/dump.zip"). */
@@ -37,8 +39,9 @@ const MAX_RECURSION_DEPTH = 10;
 
 /** Converte um wildcard simples (so "*") num RegExp. Sem dependencia nova — o pedido original
  * so menciona "*", nao glob completo (**, ?, character classes). */
-function wildcardToRegExp(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+export function wildcardToRegExp(pattern: string): RegExp {
+  // Tudo que tem significado em regex (inclusive "?") vira literal; so "*" e curinga.
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
   return new RegExp(`^${escaped}$`, "i");
 }
 
@@ -46,7 +49,7 @@ function modifiedCutoffMs(source: FileSourceConfig): number | null {
   return source.modifiedWithinDays !== null ? Date.now() - source.modifiedWithinDays * 24 * 60 * 60 * 1000 : null;
 }
 
-function matchesFilters(file: RemoteFile, source: FileSourceConfig, cutoffMs: number | null): boolean {
+export function matchesFilters(file: RemoteFile, source: FileSourceConfig, cutoffMs: number | null): boolean {
   if (source.pattern && source.pattern !== "*" && !wildcardToRegExp(source.pattern).test(file.name)) {
     return false;
   }
@@ -58,7 +61,7 @@ function matchesFilters(file: RemoteFile, source: FileSourceConfig, cutoffMs: nu
 }
 
 async function walkSftp(
-  sftp: any,
+  sftp: SftpClient,
   dir: string,
   baseDir: string,
   depth: number,
@@ -170,7 +173,7 @@ const UNIX_LIST_MONTHS: Record<string, number> = {
  * parser proprio — mesma ambiguidade que o `ls -l` em si tem, resolvida do mesmo jeito: se a
  * data com o ano atual cair no futuro, o ano certo e o anterior.
  */
-function parseUnixListDate(raw: string, now: Date): number | null {
+export function parseUnixListDate(raw: string, now: Date): number | null {
   const withTime = /^([A-Za-z]{3})\s+(\d{1,2})\s+(\d{1,2}):(\d{2})$/.exec(raw.trim());
   if (withTime) {
     const month = UNIX_LIST_MONTHS[withTime[1]];
@@ -205,7 +208,7 @@ function ftpEntryMtimeMs(e: { modifiedAt?: Date; rawModifiedAt: string }): numbe
 }
 
 async function walkFtp(
-  client: any,
+  client: FtpClient,
   dir: string,
   baseDir: string,
   depth: number,
@@ -365,7 +368,8 @@ export async function runFileBackup(job: FilesJobConfig, options: RunBackupOptio
   }
 
   fs.mkdirSync(job.outputDir, { recursive: true });
-  writeRunLock(job);
+  acquireRunLock(job, jobLog);
+  const partialFile = partialPathFor(outputFile);
   let stagingDir: string | null = null;
   try {
     jobLog.info(`Iniciando backup de arquivos do job "${job.name}" via ${source.protocol} (${source.host})...`);
@@ -403,8 +407,11 @@ export async function runFileBackup(job: FilesJobConfig, options: RunBackupOptio
     }
 
     if (matched.length > 0) updateRunPhase(job, "compressing");
-    await createTarGz(stagingDir, outputFile);
-    const { size } = fs.statSync(outputFile);
+    // Compacta num .partial e so renomeia no fim (ver backups.ts): um tar interrompido nao vira
+    // "backup valido". finalizeBackupFile tambem aplica 0600 — o tar cria o arquivo com a umask
+    // do processo (normalmente 644), e o conteudo e tao sensivel quanto um dump.
+    await createTarGz(stagingDir, partialFile);
+    const size = finalizeBackupFile(partialFile, outputFile);
     jobLog.info(
       `Backup de arquivos do job "${job.name}" concluido: ${outputFile} (${formatBytes(size)}, ${matched.length} arquivo(s))`,
     );
@@ -416,7 +423,7 @@ export async function runFileBackup(job: FilesJobConfig, options: RunBackupOptio
     } else {
       jobLog.error(`Job "${job.name}" falhou: ${(err as Error).message}`);
     }
-    fs.rmSync(outputFile, { force: true });
+    fs.rmSync(partialFile, { force: true });
     throw err;
   } finally {
     if (stagingDir) fs.rmSync(stagingDir, { recursive: true, force: true });

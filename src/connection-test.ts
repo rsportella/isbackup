@@ -1,16 +1,10 @@
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { spawnEnvWithFallbackPath } from "./dump.js";
+import { writeMysqlOptionsFile, type MysqlConnection } from "./mysql-credentials.js";
 
-export interface DbConnectionInfo {
-  host: string;
-  port: number;
-  user: string;
-  password: string;
-}
+/** Mantido como alias pra quem ja importava esse nome. */
+export type DbConnectionInfo = MysqlConnection;
 
 /**
  * Testa uma conexao MySQL/MariaDB rodando `SELECT 1` de verdade via o cliente `mysql` — confirma
@@ -19,20 +13,11 @@ export interface DbConnectionInfo {
  * senha errada, contanto que o servidor responda (ele so testa se o processo esta vivo, nao se
  * a autenticacao funcionou) — verificado na pratica, nao e documentacao teorica.
  *
- * Mesma tecnica de dump.ts pra nao expor a senha na linha de comando: vai num arquivo temporario
- * 0600, apagado logo em seguida.
+ * As credenciais vao no mesmo option file temporario 0600 usado pelo dump (mysql-credentials.ts),
+ * apagado logo em seguida.
  */
-export function testDatabaseConnection(conn: DbConnectionInfo): Promise<void> {
-  const file = path.join(os.tmpdir(), `isbackup-test-${process.pid}-${crypto.randomBytes(6).toString("hex")}.cnf`);
-  const content = [
-    "[client]",
-    `host=${conn.host}`,
-    `port=${conn.port}`,
-    `user=${conn.user}`,
-    `password=${conn.password}`,
-    "",
-  ].join("\n");
-  fs.writeFileSync(file, content, { mode: 0o600 });
+export function testDatabaseConnection(conn: MysqlConnection): Promise<void> {
+  const file = writeMysqlOptionsFile(conn, "test");
 
   return new Promise<void>((resolve, reject) => {
     const child = spawn("mysql", [`--defaults-extra-file=${file}`, "--connect-timeout=5", "-e", "SELECT 1"], {

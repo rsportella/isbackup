@@ -7,6 +7,9 @@ import { getEncryptionKeyOrNull } from "./env-writer.js";
 
 const ENV_VAR_PATTERN = /\$\{([A-Z0-9_]+)\}/g;
 
+/** Nomes de job validos: so letras, numeros, "-" e "_". */
+export const JOB_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
+
 function interpolateEnv(value: string): string {
   return value.replace(ENV_VAR_PATTERN, (match, varName: string) => {
     const resolved = process.env[varName];
@@ -94,6 +97,14 @@ function normalizeJob(raw: RawJobConfig, defaults: RawConfig["defaults"], config
 
   const type: JobType = raw.type === "files" ? "files" : "database";
   const name = raw.name.trim();
+  // A UI ja exigia isso, mas um config.yaml editado a mao nao passava por la. O nome vira parte
+  // de caminhos (pasta de backups, log, lock) e do comando no crontab: com espaco a linha do cron
+  // quebra sem aviso; com "../" o job escreveria fora da pasta de backups.
+  if (!JOB_NAME_PATTERN.test(name)) {
+    throw new Error(
+      `Job "${name}": nome invalido. Use apenas letras, numeros, "-" e "_" (sem espacos, pontos ou barras).`,
+    );
+  }
   const outputDirBase = raw.outputDir ?? defaults?.outputDir ?? "./backups";
   // Resolvido relativo ao diretorio do config.yaml (nao ao cwd do processo),
   // porque quando o cron chama o comando o cwd nao e o diretorio do projeto.
@@ -149,21 +160,52 @@ export function readRawConfig(configPath: string): RawConfig {
   return { defaults: parsed?.defaults, jobs: parsed?.jobs ?? [] };
 }
 
-/** Regrava o config.yaml a partir da estrutura crua (perde comentarios/formatacao manual). */
+/**
+ * Regrava o config.yaml a partir da estrutura crua (perde comentarios/formatacao manual).
+ *
+ * Atomico: escreve num arquivo temporario no mesmo diretorio e so entao renomeia por cima do
+ * original (rename e atomico no mesmo filesystem). Se o processo cair no meio da escrita, o
+ * config.yaml antigo continua intacto, em vez de ficar truncado — o que derrubaria todos os jobs
+ * (o cron le esse arquivo a cada execucao).
+ */
 export function writeRawConfig(configPath: string, raw: RawConfig): void {
   const resolvedPath = path.resolve(configPath);
   const text = dumpYaml(raw, { lineWidth: 100 });
-  fs.writeFileSync(resolvedPath, text, "utf8");
+
+  let mode = 0o600;
+  try {
+    mode = fs.statSync(resolvedPath).mode & 0o777; // preserva a permissao atual do arquivo
+  } catch {
+    // arquivo ainda nao existe — config.yaml tem host/usuario/senha cifrada, entao 600
+  }
+
+  const tmpPath = path.join(
+    path.dirname(resolvedPath),
+    `.${path.basename(resolvedPath)}.${process.pid}.${Date.now()}.tmp`,
+  );
+  try {
+    const fd = fs.openSync(tmpPath, "w", mode);
+    try {
+      fs.writeFileSync(fd, text, "utf8");
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(tmpPath, resolvedPath);
+  } catch (err) {
+    fs.rmSync(tmpPath, { force: true });
+    throw err;
+  }
 }
 
 export function loadConfig(configPath: string): JobConfig[] {
   const resolvedPath = path.resolve(configPath);
   const parsed = readRawConfig(resolvedPath);
 
-  if (parsed.jobs.length === 0) {
-    throw new Error(
-      `Nenhum job encontrado em ${resolvedPath}. O arquivo precisa de uma chave "jobs" com ao menos um item.`,
-    );
+  // Zero jobs e um estado valido (primeiro uso: a UI mostra "Nenhum job ainda" e o botao de
+  // criar). Quem precisa de ao menos um job (cron install, run --all) ja checa isso.
+  if (!Array.isArray(parsed.jobs)) {
+    throw new Error(`Em ${resolvedPath}, a chave "jobs" precisa ser uma lista.`);
   }
 
   const configDir = path.dirname(resolvedPath);

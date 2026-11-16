@@ -14,7 +14,7 @@ import {
   type CronContext,
 } from "../cron.js";
 import { logger } from "../logger.js";
-import type { JobConfig, JobType, FileProtocol, RawFileSourceConfig, RawJobConfig } from "../types.js";
+import type { JobConfig } from "../types.js";
 import { getJobState } from "./state.js";
 import { triggerJobRun } from "./run-trigger.js";
 import {
@@ -27,33 +27,64 @@ import { getOrCreateEncryptionKey } from "../env-writer.js";
 import { encrypt } from "../crypto.js";
 import { testDatabaseConnection } from "../connection-test.js";
 import { testFileSourceConnection } from "../file-backup.js";
+import { readLastLines } from "../job-log.js";
+import {
+  currentBackupDir,
+  ensureWritableDir,
+  freeBytes,
+  getMoveStatus,
+  hostPathFor,
+  isDocker,
+  normalizeUserPath,
+  SettingsError,
+  startMovingBackups,
+  suggestedDirs,
+} from "./settings.js";
+import {
+  buildConnectionTestTarget,
+  buildRawJob,
+  JobInputError,
+  mergeEditedJob,
+  parseJobName,
+  type JobInputBody,
+} from "./job-input.js";
 
 export interface ApiOptions {
   configPath: string;
   projectRoot: string;
+  /** .env com a chave de cifra. Padrao: <projectRoot>/.env (a CLI passa o da pasta de dados). */
+  envPath?: string;
   logDir: string;
 }
 
 export interface SizeTrend {
-  /** "ok": ultimo backup maior que o anterior. "warning": igual ou menor (indicio de falha silenciosa). "unknown": sem base de comparacao (0 ou 1 backup ainda). */
+  /** "ok": ultimo backup do mesmo tamanho, maior, ou so um pouco menor que o anterior. "warning":
+   * encolheu alem da tolerancia (indicio de falha silenciosa). "unknown": sem base de comparacao
+   * (0 ou 1 backup ainda). */
   status: "ok" | "warning" | "unknown";
   lastSize: number;
   previousSize: number | null;
 }
 
+/** Abaixo dessa fracao do backup anterior, o novo backup e considerado suspeito. */
+export const SIZE_DROP_WARNING_RATIO = 0.8;
+
 /**
- * Compara o tamanho do ultimo backup com o penultimo. Um backup bem-sucedido deve, na pratica,
- * ser sempre igual ou maior que o anterior (o banco so cresce); um arquivo igual ou menor e um
- * sinal de que o dump pode ter falhado silenciosamente (conexao caiu no meio, disco cheio, etc).
+ * Compara o tamanho do ultimo backup com o penultimo. Um dump que encolhe muito de uma vez e
+ * sinal de que pode ter falhado silenciosamente (conexao caiu no meio, disco cheio, etc).
+ *
+ * Antes qualquer backup igual ou menor ja virava alerta — mas banco tambem encolhe (limpeza de
+ * logs/sessoes, DELETE de dados antigos) e a compressao varia um pouco de um dump pro outro, o
+ * que gerava falso positivo constante. Agora so alerta quando cai abaixo de 80% do anterior.
  */
-function computeSizeTrend(files: { size: number }[]): SizeTrend {
+export function computeSizeTrend(files: { size: number }[]): SizeTrend {
   const last = files[0];
   const previous = files[1];
   if (!last || !previous) {
     return { status: "unknown", lastSize: last ? last.size : 0, previousSize: null };
   }
   return {
-    status: last.size > previous.size ? "ok" : "warning",
+    status: last.size >= previous.size * SIZE_DROP_WARNING_RATIO ? "ok" : "warning",
     lastSize: last.size,
     previousSize: previous.size,
   };
@@ -149,114 +180,16 @@ function findJobOr404(req: Request, res: Response, opts: ApiOptions): JobConfig 
   return job;
 }
 
-const JOB_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
-
-interface JobInputBody {
-  name?: unknown;
-  type?: unknown;
-  host?: unknown;
-  port?: unknown;
-  user?: unknown;
-  password?: unknown;
-  databases?: unknown;
-  schedule?: unknown;
-  retentionDays?: unknown;
-  gzip?: unknown;
-  fileSourceProtocol?: unknown;
-  fileSourceHost?: unknown;
-  fileSourcePort?: unknown;
-  fileSourceUser?: unknown;
-  fileSourcePassword?: unknown;
-  fileSourceRemoteDir?: unknown;
-  fileSourcePattern?: unknown;
-  fileSourceNameContains?: unknown;
-  fileSourceModifiedWithinDays?: unknown;
-  fileSourceSecure?: unknown;
-}
-
-function parseDatabasesInput(value: unknown): "all" | string[] {
-  if (value === "all" || value === undefined || value === null || value === "") return "all";
-  const items = typeof value === "string" ? value.split(",") : Array.isArray(value) ? value : null;
-  if (items === null) throw new Error('Campo "databases" invalido.');
-  const parsed = items.map((s) => String(s).trim()).filter(Boolean);
-  return parsed.length > 0 ? parsed : "all";
-}
-
-function parsePort(value: unknown): number {
-  const n = Number(value === "" || value === undefined || value === null ? 3306 : value);
-  if (!Number.isInteger(n) || n < 1 || n > 65535) throw new Error(`Porta invalida: "${value}".`);
-  return n;
-}
-
-function parseRetentionDays(value: unknown): number {
-  const n = Number(value === "" || value === undefined || value === null ? 7 : value);
-  if (!Number.isInteger(n) || n < 0) throw new Error(`Retencao invalida: "${value}".`);
-  return n;
-}
-
-function requireNonEmpty(value: unknown, field: string): string {
-  const s = String(value ?? "").trim();
-  if (!s) throw new Error(`Campo "${field}" e obrigatorio.`);
-  return s;
-}
-
 /** Cifra a senha com a chave mestre (.env), pra gravar direto no config.yaml. */
-function encryptPassword(envPath: string, password: string): string {
-  const key = getOrCreateEncryptionKey(envPath);
-  return encrypt(password, key);
+function passwordEncrypter(envPath: string): (plain: string) => string {
+  return (plain) => encrypt(plain, getOrCreateEncryptionKey(envPath));
 }
 
-function requireJobType(value: unknown): JobType {
-  return value === "files" ? "files" : "database";
-}
-
-function parseFileSourcePort(protocol: FileProtocol, value: unknown): number {
-  const fallback = protocol === "sftp" ? 22 : 21;
-  const n = Number(value === "" || value === undefined || value === null ? fallback : value);
-  if (!Number.isInteger(n) || n < 1 || n > 65535) throw new Error(`Porta de origem invalida: "${value}".`);
-  return n;
-}
-
-function parseModifiedWithinDays(value: unknown): number | undefined {
-  if (value === undefined || value === null || value === "") return undefined;
-  const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) {
-    throw new Error('Campo "modificados nos ultimos N dias" deve ser um numero positivo.');
-  }
-  return n;
-}
-
-/**
- * Monta o bloco fileSource a partir do body do form, no mesmo padrao ja usado pra senha do job:
- * obrigatoria na criacao, opcional na edicao (vazia = mantem a senha remota atual).
- */
-function buildFileSourceInput(
-  body: JobInputBody,
-  envPath: string,
-  existing: RawFileSourceConfig | undefined,
-): RawFileSourceConfig {
-  const protocol: FileProtocol = body.fileSourceProtocol === "ftp" ? "ftp" : "sftp";
-  const host = requireNonEmpty(body.fileSourceHost, "fileSource.host");
-  const user = requireNonEmpty(body.fileSourceUser, "fileSource.user");
-
-  const newPassword = String(body.fileSourcePassword ?? "");
-  if (!newPassword && !existing?.password) {
-    throw new Error('Campo "fileSource.password" e obrigatorio.');
-  }
-  const password = newPassword ? encryptPassword(envPath, newPassword) : existing!.password!;
-
-  return {
-    protocol,
-    host,
-    port: parseFileSourcePort(protocol, body.fileSourcePort),
-    user,
-    password,
-    remoteDir: String(body.fileSourceRemoteDir ?? "").trim() || "/",
-    pattern: String(body.fileSourcePattern ?? "").trim() || "*",
-    nameContains: String(body.fileSourceNameContains ?? "").trim() || undefined,
-    modifiedWithinDays: parseModifiedWithinDays(body.fileSourceModifiedWithinDays),
-    secure: Boolean(body.fileSourceSecure),
-  };
+/** 400 pra erro de validacao/config; o resto (bug, I/O inesperado) vira 500. */
+function sendError(res: Response, err: unknown): void {
+  const message = (err as Error).message;
+  const isClientError = err instanceof JobInputError || !(err instanceof Error) || err.name === "Error";
+  res.status(isClientError ? 400 : 500).json({ error: message });
 }
 
 export function createApiRouter(opts: ApiOptions): Router {
@@ -267,6 +200,7 @@ export function createApiRouter(opts: ApiOptions): Router {
     configPath: path.resolve(opts.configPath),
     logDir: opts.logDir,
   });
+  const envPath = opts.envPath ?? path.join(opts.projectRoot, ".env");
 
   router.get("/jobs", (_req, res) => {
     try {
@@ -280,10 +214,7 @@ export function createApiRouter(opts: ApiOptions): Router {
   router.post("/jobs", (req, res) => {
     try {
       const body = req.body as JobInputBody;
-      const name = requireNonEmpty(body.name, "name");
-      if (!JOB_NAME_PATTERN.test(name)) {
-        throw new Error('Nome invalido: use apenas letras, numeros, "-" e "_", sem espacos.');
-      }
+      const name = parseJobName(body.name);
 
       const raw = readRawConfig(opts.configPath);
       if (raw.jobs.some((j) => j.name === name)) {
@@ -291,45 +222,14 @@ export function createApiRouter(opts: ApiOptions): Router {
         return;
       }
 
-      const schedule = requireNonEmpty(body.schedule, "schedule");
-      resolveSchedule(schedule);
-      const envPath = path.join(opts.projectRoot, ".env");
-      const type = requireJobType(body.type);
-
-      let newJob: RawJobConfig;
-      if (type === "files") {
-        newJob = {
-          name,
-          type: "files",
-          schedule,
-          retentionDays: parseRetentionDays(body.retentionDays),
-          fileSource: buildFileSourceInput(body, envPath, undefined),
-        };
-      } else {
-        const user = requireNonEmpty(body.user, "user");
-        const password = requireNonEmpty(body.password, "password");
-        newJob = {
-          name,
-          type: "database",
-          host: String(body.host ?? "").trim() || undefined,
-          port: parsePort(body.port),
-          user,
-          password: encryptPassword(envPath, password),
-          databases: parseDatabasesInput(body.databases),
-          schedule,
-          retentionDays: parseRetentionDays(body.retentionDays),
-          gzip: typeof body.gzip === "boolean" ? body.gzip : true,
-        };
-      }
-
-      raw.jobs.push(newJob);
+      raw.jobs.push(buildRawJob(name, body, { encryptPassword: passwordEncrypter(envPath) }));
       writeRawConfig(opts.configPath, raw);
       logger.info(`Job "${name}" criado via UI.`);
 
       const created = loadConfig(opts.configPath).find((j) => j.name === name)!;
       res.status(201).json(jobSummary(created));
     } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
+      sendError(res, err);
     }
   });
 
@@ -338,121 +238,52 @@ export function createApiRouter(opts: ApiOptions): Router {
   // download de verdade, so confirma que da pra conectar com essas credenciais.
   router.post("/jobs/test-connection", async (req, res) => {
     try {
-      const body = req.body as JobInputBody & { existingJobName?: unknown };
-      const type = requireJobType(body.type);
-      const existingJobName = typeof body.existingJobName === "string" ? body.existingJobName : undefined;
-
+      const body = req.body as JobInputBody;
       let existingJob: JobConfig | undefined;
-      if (existingJobName) {
+      if (typeof body.existingJobName === "string" && body.existingJobName) {
         try {
-          existingJob = loadConfig(opts.configPath).find((j) => j.name === existingJobName);
+          existingJob = loadConfig(opts.configPath).find((j) => j.name === body.existingJobName);
         } catch {
           // config com problema em outro job nao deve impedir de testar este aqui
         }
       }
 
-      if (type === "files") {
-        const protocol: FileProtocol = body.fileSourceProtocol === "ftp" ? "ftp" : "sftp";
-        const host = requireNonEmpty(body.fileSourceHost, "fileSource.host");
-        const user = requireNonEmpty(body.fileSourceUser, "fileSource.user");
-        const typedPassword = String(body.fileSourcePassword ?? "");
-        const fallbackPassword = existingJob?.type === "files" ? existingJob.fileSource.password : "";
-        const password = typedPassword || fallbackPassword;
-        if (!password) {
-          res.status(400).json({ error: "Informe a senha para testar a conexao." });
-          return;
-        }
-        await testFileSourceConnection({
-          protocol,
-          host,
-          port: parseFileSourcePort(protocol, body.fileSourcePort),
-          user,
-          password,
-          remoteDir: String(body.fileSourceRemoteDir ?? "").trim() || "/",
-          pattern: "*",
-          nameContains: null,
-          modifiedWithinDays: null,
-          secure: Boolean(body.fileSourceSecure),
-        });
-      } else {
-        const host = String(body.host ?? "").trim() || "localhost";
-        const user = requireNonEmpty(body.user, "user");
-        const typedPassword = String(body.password ?? "");
-        const fallbackPassword = existingJob?.type === "database" ? existingJob.password : "";
-        const password = typedPassword || fallbackPassword;
-        if (!password) {
-          res.status(400).json({ error: "Informe a senha para testar a conexao." });
-          return;
-        }
-        await testDatabaseConnection({ host, port: parsePort(body.port), user, password });
-      }
+      const target = buildConnectionTestTarget(body, existingJob);
+      if (target.type === "files") await testFileSourceConnection(target.source);
+      else await testDatabaseConnection(target.connection);
 
       res.json({ ok: true });
     } catch (err) {
+      // Falha de conexao (host fora, senha errada) e resposta esperada do teste, nao erro do servidor.
       res.status(400).json({ error: (err as Error).message });
     }
   });
 
   router.put("/jobs/:name", (req, res) => {
     try {
-      const body = req.body as JobInputBody;
       const raw = readRawConfig(opts.configPath);
-      const existing = raw.jobs.find((j) => j.name === req.params.name);
-      if (!existing) {
+      const idx = raw.jobs.findIndex((j) => j.name === req.params.name);
+      if (idx === -1) {
         res.status(404).json({ error: `Job "${req.params.name}" nao encontrado.` });
         return;
       }
 
-      const wasType: JobType = existing.type === "files" ? "files" : "database";
-      const previousFileSource = existing.fileSource;
-      const previousPassword = existing.password;
-
-      const schedule = requireNonEmpty(body.schedule, "schedule");
-      resolveSchedule(schedule);
-      const envPath = path.join(opts.projectRoot, ".env");
-      const type = requireJobType(body.type);
-
-      existing.type = type;
-      existing.schedule = schedule;
-      existing.retentionDays = parseRetentionDays(body.retentionDays);
-
-      if (type === "files") {
-        existing.fileSource = buildFileSourceInput(body, envPath, wasType === "files" ? previousFileSource : undefined);
-        // Job trocou de tipo (ou foi criado direto como "files") — limpa os campos de banco pra
-        // nao deixar lixo de um tipo anterior no config.yaml.
-        delete existing.host;
-        delete existing.port;
-        delete existing.user;
-        delete existing.password;
-        delete existing.databases;
-        delete existing.gzip;
-      } else {
-        const user = requireNonEmpty(body.user, "user");
-        const newPassword = String(body.password ?? "");
-        if (newPassword) {
-          existing.password = encryptPassword(envPath, newPassword);
-        } else if (wasType === "database" && previousPassword) {
-          existing.password = previousPassword; // mantem a senha atual, igual ao comportamento de hoje
-        } else {
-          throw new Error('Campo "password" e obrigatorio.');
-        }
-        existing.host = String(body.host ?? "").trim() || undefined;
-        existing.port = parsePort(body.port);
-        existing.user = user;
-        existing.databases = parseDatabasesInput(body.databases);
-        existing.gzip = typeof body.gzip === "boolean" ? body.gzip : true;
-        delete existing.fileSource;
-      }
-
+      const existing = raw.jobs[idx];
+      const edited = buildRawJob(existing.name, req.body as JobInputBody, {
+        existing,
+        encryptPassword: passwordEncrypter(envPath),
+      });
+      raw.jobs[idx] = mergeEditedJob(existing, edited);
       writeRawConfig(opts.configPath, raw);
       logger.info(`Job "${existing.name}" atualizado via UI.`);
 
       const updated = loadConfig(opts.configPath).find((j) => j.name === existing.name)!;
       res.json(jobSummary(updated));
     } catch (err) {
-      res.status(400).json({ error: (err as Error).message });
+      sendError(res, err);
     }
   });
+
 
   router.delete("/jobs/:name", (req, res) => {
     try {
@@ -532,12 +363,8 @@ export function createApiRouter(opts: ApiOptions): Router {
     const job = findJobOr404(req, res, opts);
     if (!job) return;
     const logFile = path.join(opts.logDir, `${job.name}.log`);
-    if (!fs.existsSync(logFile)) {
-      res.json({ lines: [] });
-      return;
-    }
-    const lines = fs.readFileSync(logFile, "utf8").split("\n").filter(Boolean).slice(-200);
-    res.json({ lines });
+    // Le so o fim do arquivo (nao o log inteiro) — readLastLines devolve [] se ainda nao existe.
+    res.json({ lines: readLastLines(logFile, 200) });
   });
 
   router.post("/jobs/:name/run", (req, res) => {
@@ -591,6 +418,72 @@ export function createApiRouter(opts: ApiOptions): Router {
       });
     } catch (err) {
       res.status(400).json({ error: (err as Error).message });
+    }
+  });
+
+  // ----- Ajustes: onde guardar os backups -----------------------------------------------------
+  function settingsSummary() {
+    const raw = readRawConfig(opts.configPath);
+    const backupDir = currentBackupDir(raw, opts.configPath);
+    return {
+      backupDir,
+      /** Como aparece no computador do usuario (no Docker, a pasta do host; null se nao mapeavel). */
+      backupDirOnHost: hostPathFor(backupDir),
+      freeBytes: freeBytes(backupDir),
+      docker: isDocker(),
+      /** Jobs com pasta propria no config.yaml: nao seguem a pasta padrao. */
+      jobsWithOwnDir: raw.jobs.filter((j) => j.outputDir).map((j) => j.name),
+      suggestions: isDocker() ? [] : suggestedDirs(),
+      move: getMoveStatus(),
+    };
+  }
+
+  router.get("/settings", (_req, res) => {
+    try {
+      res.json(settingsSummary());
+    } catch (err) {
+      sendError(res, err);
+    }
+  });
+
+  router.put("/settings", (req, res) => {
+    try {
+      if (isDocker()) {
+        throw new SettingsError(
+          "No Docker, a pasta dos dados e escolhida ao subir o container: rode ./docker.sh setup no seu computador.",
+        );
+      }
+      const raw = readRawConfig(opts.configPath);
+      const oldDir = currentBackupDir(raw, opts.configPath);
+      const newDir = normalizeUserPath(String(req.body?.backupDir ?? ""));
+      const moveExisting = req.body?.moveExisting === true;
+
+      if (newDir === oldDir) {
+        res.json(settingsSummary());
+        return;
+      }
+      if (newDir.startsWith(oldDir + path.sep) || oldDir.startsWith(newDir + path.sep)) {
+        throw new SettingsError("A pasta nova nao pode ficar dentro da atual (nem a atual dentro da nova).");
+      }
+
+      const jobs = loadConfig(opts.configPath);
+      if (moveExisting && jobs.some((j) => readRunLock(j))) {
+        res.status(409).json({ error: "Tem backup rodando agora. Espere terminar para mover os arquivos." });
+        return;
+      }
+      ensureWritableDir(newDir);
+
+      raw.defaults = { ...raw.defaults, outputDir: newDir };
+      writeRawConfig(opts.configPath, raw);
+      logger.info(`Pasta dos backups alterada via UI: ${oldDir} -> ${newDir}`);
+
+      // So os jobs que seguem a pasta padrao (sem outputDir proprio) mudam de lugar.
+      const moving =
+        moveExisting && startMovingBackups(oldDir, newDir, raw.jobs.filter((j) => !j.outputDir).map((j) => j.name));
+      res.status(moving ? 202 : 200).json(settingsSummary());
+    } catch (err) {
+      if (err instanceof SettingsError) res.status(400).json({ error: err.message });
+      else sendError(res, err);
     }
   });
 

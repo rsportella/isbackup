@@ -10,6 +10,19 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%235ac8fa'/%3E%3Cstop offset='1' stop-color='%23007aff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='url(%23g)'/%3E%3Cpath d='M8 11h16v3H8zM9.5 14h13v8a1.5 1.5 0 0 1-1.5 1.5H11A1.5 1.5 0 0 1 9.5 22zM13.5 17.5h5' fill='none' stroke='white' stroke-width='1.8' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E"
     />
+    <script>
+      // Aplica o tema antes da primeira pintura, pra pagina nunca "piscar" no tema errado.
+      // Preferencia: "auto" (segue o sistema), "light" ou "dark" — guardada so neste navegador.
+      (function () {
+        var pref = "auto";
+        try {
+          pref = localStorage.getItem("isbackup-theme") || "auto";
+        } catch (e) {}
+        var dark = pref === "dark" || (pref === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.dataset.theme = dark ? "dark" : "light";
+        document.documentElement.dataset.themePref = pref;
+      })();
+    </script>
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
@@ -27,6 +40,14 @@
       <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 6.5h16M9.5 6.5V4.8A1.8 1.8 0 0 1 11.3 3h1.4a1.8 1.8 0 0 1 1.8 1.8v1.7M6 6.5l.9 12.6A2 2 0 0 0 8.9 21h6.2a2 2 0 0 0 2-1.9L18 6.5M10 10.5v6M14 10.5v6" /></symbol>
       <symbol id="i-ellipsis" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.9" /><circle cx="12" cy="12" r="1.9" /><circle cx="18.5" cy="12" r="1.9" /></symbol>
       <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+      <symbol id="i-github" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 .3a12 12 0 0 0-3.8 23.38c.6.12.83-.26.83-.57L9 21.07c-3.34.72-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.09-.73.09-.73 1.2.09 1.83 1.24 1.83 1.24 1.07 1.83 2.81 1.3 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.14-.3-.54-1.52.1-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.64 1.66.24 2.88.12 3.18a4.65 4.65 0 0 1 1.23 3.22c0 4.61-2.8 5.63-5.48 5.92.42.36.81 1.1.81 2.22l-.01 3.29c0 .31.2.69.82.57A12 12 0 0 0 12 .3" /></symbol>
+      <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2.5" y="4.5" width="19" height="15" rx="3" /><path d="m3.5 6.5 8.5 6.5 8.5-6.5" /></symbol>
+      <symbol id="i-linkedin" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.13 2.06 2.06 0 0 1 0 4.13zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.73v20.54C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.73C24 .77 23.2 0 22.22 0z" /></symbol>
+      <symbol id="i-instagram" viewBox="0 0 24 24"><rect x="2.5" y="2.5" width="19" height="19" rx="5.5" /><circle cx="12" cy="12" r="4.3" /><circle cx="17.4" cy="6.6" r="1.15" fill="currentColor" stroke="none" /></symbol>
+      <symbol id="i-drive" viewBox="0 0 24 24"><rect x="2.5" y="13" width="19" height="7" rx="2.5" /><path d="M4.2 13 6.6 5.6A2 2 0 0 1 8.5 4.2h7a2 2 0 0 1 1.9 1.4l2.4 7.4M17 16.5h.01M14 16.5h.01" /></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /><path d="M12 2.5v2M12 19.5v2M4.6 4.6l1.4 1.4M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4" /></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7z" /></symbol>
+      <symbol id="i-theme-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor" stroke="none" /></symbol>
       <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11.5A8 8 0 0 0 6.1 6.6L4 8.7M4 4v4.7h4.7M4 12.5a8 8 0 0 0 13.9 4.9l2.1-2.1M20 20v-4.7h-4.7" /></symbol>
       <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14" /></symbol>
       <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" /></symbol>
@@ -49,6 +70,26 @@
       <div class="topbar-actions">
         <span id="cron-badge" class="badge">Carregando…</span>
         <button id="cron-toggle-btn" class="btn btn-plain btn-sm"></button>
+        <button type="button" id="settings-btn" class="btn btn-icon tooltip-bottom" data-tooltip="Onde guardar os backups" aria-label="Onde guardar os backups">
+          <svg class="icon"><use href="#i-drive" /></svg>
+        </button>
+        <div class="card-menu" id="theme-menu">
+          <button type="button" id="theme-btn" class="btn btn-icon" data-action="toggle-menu" aria-label="Aparência" aria-haspopup="menu" title="Aparência">
+            <svg class="icon"><use href="#i-theme-auto" /></svg>
+          </button>
+          <div class="dropdown-menu" data-menu role="menu" aria-label="Aparência" hidden>
+            <div class="menu-heading">Aparência</div>
+            <button type="button" role="menuitemradio" data-theme-choice="auto" aria-checked="false">
+              <svg class="icon menu-check"><use href="#i-check" /></svg><span class="menu-label">Automático</span><svg class="icon"><use href="#i-theme-auto" /></svg>
+            </button>
+            <button type="button" role="menuitemradio" data-theme-choice="light" aria-checked="false">
+              <svg class="icon menu-check"><use href="#i-check" /></svg><span class="menu-label">Claro</span><svg class="icon"><use href="#i-sun" /></svg>
+            </button>
+            <button type="button" role="menuitemradio" data-theme-choice="dark" aria-checked="false">
+              <svg class="icon menu-check"><use href="#i-check" /></svg><span class="menu-label">Escuro</span><svg class="icon"><use href="#i-moon" /></svg>
+            </button>
+          </div>
+        </div>
         <button id="refresh-btn" class="btn btn-icon tooltip-bottom" data-tooltip="Atualizar" aria-label="Atualizar">
           <svg class="icon"><use href="#i-refresh" /></svg>
         </button>
@@ -76,6 +117,32 @@
         <p class="muted">Carregando jobs…</p>
       </div>
     </main>
+
+    <footer class="app-footer">
+      <div class="app-footer-brand">
+        <span class="app-footer-icon" aria-hidden="true"><svg class="icon"><use href="#i-archive" /></svg></span>
+        <span><strong>isbackup</strong> v1.0.0</span>
+      </div>
+      <p>
+        Criado e mantido por <strong>RSPortella</strong>
+        <span class="app-footer-sep" aria-hidden="true">·</span>
+        Código aberto sob a licença ISC
+      </p>
+      <nav class="app-footer-social" aria-label="RSPortella nas redes">
+        <a class="social-link social-github" href="https://github.com/rsportella" target="_blank" rel="noopener noreferrer" aria-label="GitHub de RSPortella" title="GitHub">
+          <svg class="icon" aria-hidden="true"><use href="#i-github" /></svg>
+        </a>
+        <a class="social-link social-linkedin" href="https://www.linkedin.com/in/rsportella/" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn de RSPortella" title="LinkedIn">
+          <svg class="icon" aria-hidden="true"><use href="#i-linkedin" /></svg>
+        </a>
+        <a class="social-link social-instagram" href="https://www.instagram.com/rsportella/" target="_blank" rel="noopener noreferrer" aria-label="Instagram de RSPortella" title="Instagram">
+          <svg class="icon" aria-hidden="true"><use href="#i-instagram" /></svg>
+        </a>
+        <a class="social-link social-mail" href="mailto:rodolfosportella@gmail.com" aria-label="Enviar e-mail para RSPortella (rodolfosportella@gmail.com)" title="rodolfosportella@gmail.com">
+          <svg class="icon" aria-hidden="true"><use href="#i-mail" /></svg>
+        </a>
+      </nav>
+    </footer>
 
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
@@ -306,6 +373,60 @@
           <button type="button" class="sheet-close" data-action="close-detail" aria-label="Fechar"><svg class="icon"><use href="#i-xmark" /></svg></button>
         </div>
         <div class="sheet-body" id="detail-modal-body"><p class="muted">Carregando…</p></div>
+      </div>
+    </div>
+
+    <!-- Folha: onde guardar os backups -->
+    <div id="settings-modal-overlay" class="modal-overlay" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <form id="settings-form" novalidate>
+          <div class="sheet-header">
+            <h2 id="settings-title">Onde guardar os backups</h2>
+            <button type="button" class="sheet-close" data-action="close-settings" aria-label="Fechar"><svg class="icon"><use href="#i-xmark" /></svg></button>
+          </div>
+          <div class="sheet-body">
+            <div class="location-card">
+              <div class="location-glyph"><svg class="icon"><use href="#i-drive" /></svg></div>
+              <div class="location-info">
+                <div class="location-label">Os backups estão sendo salvos em</div>
+                <div class="location-path" id="settings-current">—</div>
+                <div class="location-meta" id="settings-current-meta"></div>
+              </div>
+            </div>
+
+            <div id="settings-editable">
+              <div class="form-row">
+                <label for="settings-dir">Nova pasta</label>
+                <input id="settings-dir" name="backupDir" placeholder="/Volumes/HD Externo/Backups" autocomplete="off" spellcheck="false" />
+                <p class="field-hint">
+                  Caminho completo (aceita <code>~</code> para a sua pasta pessoal). A pasta é criada se não existir, e
+                  cada job fica numa subpasta com o próprio nome.
+                </p>
+              </div>
+              <div class="suggestion-chips" id="settings-suggestions"></div>
+              <div class="form-row" id="settings-move-row">
+                <label class="switch-row">Mover os backups que já existem<input type="checkbox" class="switch" name="moveExisting" checked /></label>
+                <p class="field-hint" id="settings-move-hint"></p>
+              </div>
+              <p class="field-hint" id="settings-own-dir-hint" hidden></p>
+            </div>
+
+            <div id="settings-docker" class="docker-note" hidden>
+              <p>
+                No Docker, a pasta é escolhida quando o container sobe. Para trocar, rode no terminal, na pasta do
+                projeto:
+              </p>
+              <pre class="log-view">./docker.sh setup</pre>
+            </div>
+
+            <p class="schedule-preview" id="settings-move-status" hidden></p>
+          </div>
+          <div class="modal-actions">
+            <p class="modal-error error-line" id="settings-error" hidden></p>
+            <button type="button" class="btn" data-action="close-settings">Fechar</button>
+            <button type="submit" class="btn btn-primary" id="settings-save">Salvar</button>
+          </div>
+        </form>
       </div>
     </div>
 

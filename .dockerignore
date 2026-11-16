@@ -1,0 +1,14 @@
+# So o necessario pra construir a imagem — nunca dados ou segredos locais
+.git
+node_modules
+dist
+backups
+logs
+docker-data
+config.yaml
+.env
+test
+docs
+*.log
+.DS_Store
+docker.local.env

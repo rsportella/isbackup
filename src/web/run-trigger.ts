@@ -1,5 +1,5 @@
 import { runJobBackup } from "../backup-runner.js";
-import { RunCancelledError } from "../run-lock.js";
+import { RunAlreadyActiveError, RunCancelledError } from "../run-lock.js";
 import { createJobLogger } from "../job-log.js";
 import type { JobConfig } from "../types.js";
 import { setJobState } from "./state.js";
@@ -27,6 +27,12 @@ export function triggerJobRun(job: JobConfig, logDir: string, options: { reason?
       });
     })
     .catch((err: Error) => {
+      // Outro processo (ex: o cron) ja estava rodando esse job: nao e uma falha deste run. Volta
+      // pro estado ocioso — o lock em disco do outro run e que faz o card mostrar "Rodando".
+      if (err instanceof RunAlreadyActiveError) {
+        setJobState(job.name, { status: "idle" });
+        return;
+      }
       // O detalhe do erro ja foi gravado em logs/<job>.log dentro de runBackup/runFileBackup
       // (mensagem mais especifica, com o "Falhou:"); aqui so atualiza o estado pra UI.
       setJobState(job.name, {

@@ -8,6 +8,70 @@ function icon(name) {
   return `<svg class="icon" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
 }
 
+// ----- Aparencia: Automatico / Claro / Escuro --------------------------------------------------
+// O script no <head> ja aplicou o tema antes da pintura; aqui ficam a troca pelo menu e o
+// acompanhamento do sistema no modo Automatico. A escolha fica so neste navegador (localStorage).
+const THEME_STORAGE_KEY = "isbackup-theme";
+const THEME_ICONS = { auto: "theme-auto", light: "sun", dark: "moon" };
+const THEME_LABELS = { auto: "Automático", light: "Claro", dark: "Escuro" };
+const systemDarkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+function readThemePref() {
+  try {
+    const value = localStorage.getItem(THEME_STORAGE_KEY);
+    return value === "light" || value === "dark" ? value : "auto";
+  } catch {
+    return "auto"; // navegacao privada / storage bloqueado: segue o sistema
+  }
+}
+
+function applyTheme(pref) {
+  const dark = pref === "dark" || (pref === "auto" && systemDarkQuery.matches);
+  const root = document.documentElement;
+  root.dataset.theme = dark ? "dark" : "light";
+  root.dataset.themePref = pref;
+
+  document.querySelectorAll("[data-theme-choice]").forEach((btn) => {
+    btn.setAttribute("aria-checked", btn.dataset.themeChoice === pref ? "true" : "false");
+  });
+  const themeBtn = document.getElementById("theme-btn");
+  themeBtn.querySelector("use").setAttribute("href", `#i-${THEME_ICONS[pref]}`);
+  themeBtn.title = `Aparência: ${THEME_LABELS[pref]}`;
+}
+
+function setThemePref(pref) {
+  try {
+    if (pref === "auto") localStorage.removeItem(THEME_STORAGE_KEY);
+    else localStorage.setItem(THEME_STORAGE_KEY, pref);
+  } catch {
+    // sem storage: vale so ate recarregar a pagina
+  }
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Crossfade suave entre os temas quando o navegador suporta View Transitions.
+  if (document.startViewTransition && !reduceMotion) document.startViewTransition(() => applyTheme(pref));
+  else applyTheme(pref);
+}
+
+// No modo Automatico, acompanha o sistema na hora (ex: macOS trocando pra escuro ao anoitecer).
+systemDarkQuery.addEventListener("change", () => {
+  if (readThemePref() === "auto") applyTheme("auto");
+});
+
+applyTheme(readThemePref());
+
+document.getElementById("theme-menu").addEventListener("click", (e) => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  if (btn.dataset.action === "toggle-menu") {
+    toggleMenu(btn.nextElementSibling);
+    return;
+  }
+  if (btn.dataset.themeChoice) {
+    closeAllMenus();
+    setThemePref(btn.dataset.themeChoice);
+  }
+});
+
 // Alerta de confirmacao no estilo do sistema (substitui o confirm() nativo, que nao segue o
 // visual nem o tema escuro). Resolve true/false.
 const confirmOverlay = document.getElementById("confirm-overlay");
@@ -157,8 +221,17 @@ function sizeTrendBadgeHtml(job) {
   const ok = trend.status === "ok";
   const diff = trend.lastSize - trend.previousSize;
   const detail = `${formatBytes(trend.previousSize)} → ${formatBytes(trend.lastSize)} (${formatSizeDelta(diff)})`;
-  const tooltip = ok ? `Cresceu: ${detail}` : `Nao cresceu (verifique o backup): ${detail}`;
-  return `<span class="size-trend-badge size-trend-${ok ? "ok" : "warning"} tooltip-left" tabindex="0" data-tooltip="${escapeHtml(tooltip)}" aria-label="${escapeHtml(tooltip)}">${icon(ok ? "arrow-up" : "exclamation")}</span>`;
+  // "ok" tambem cobre uma reducao pequena (o servidor so alerta abaixo de 80% do anterior —
+  // banco encolhe de vez em quando), entao o texto/icone distingue "cresceu" de "variacao normal".
+  const tooltip = !ok
+    ? `Encolheu mais de 20% (verifique o backup): ${detail}`
+    : diff > 0
+      ? `Cresceu: ${detail}`
+      : diff === 0
+        ? `Mesmo tamanho: ${detail}`
+        : `Variação normal: ${detail}`;
+  const iconName = !ok ? "exclamation" : diff > 0 ? "arrow-up" : "check";
+  return `<span class="size-trend-badge size-trend-${ok ? "ok" : "warning"} tooltip-left" tabindex="0" data-tooltip="${escapeHtml(tooltip)}" aria-label="${escapeHtml(tooltip)}">${icon(iconName)}</span>`;
 }
 
 function formatDateTime(iso) {
@@ -439,7 +512,14 @@ function renderSummary() {
   if (failing) parts.push(`<span class="attention">${failing} precisa${failing === 1 ? "" : "m"} de atenção</span>`);
   if (paused) parts.push(`${paused} pausado${paused === 1 ? "" : "s"}`);
   parts.push(`${formatBytes(totalSize)} em disco`);
-  el.innerHTML = parts.join(" · ");
+  el.innerHTML = parts.join(" · ") + backupLocationHtml(" · salvos em ");
+}
+
+/** "salvos em <pasta>" clicavel (abre a folha de escolher a pasta). Vazio enquanto nao carregou. */
+function backupLocationHtml(prefix) {
+  const where = state.settings ? displayBackupDir(state.settings) : null;
+  if (!where) return "";
+  return `${prefix}<button type="button" class="link-btn" data-action="open-settings" title="Escolher onde guardar os backups">${escapeHtml(where)}</button>`;
 }
 
 function render() {
@@ -450,6 +530,7 @@ function render() {
         <div class="empty-glyph">${icon("archive")}</div>
         <h3>Nenhum job ainda</h3>
         <p>Crie um job em “Novo job” para começar a fazer backup de um banco de dados ou de arquivos remotos.</p>
+        <p>${backupLocationHtml("Os backups serão guardados em ")}${state.settings && !state.settings.docker ? ` · <button type="button" class="link-btn" data-action="open-settings">Escolher outra pasta</button>` : ""}</p>
       </div>`;
     return;
   }
@@ -537,6 +618,20 @@ async function runAll() {
   await loadJobs();
 }
 
+/**
+ * Abre/fecha um menu suspenso (fechando os outros). Os menus abrem alinhados pela direita do
+ * botao; se isso fizer o menu sair da tela (ex: no celular, com o botao quebrando pra esquerda da
+ * barra), ele abre alinhado pela esquerda.
+ */
+function toggleMenu(menu) {
+  const willOpen = menu.hidden;
+  closeAllMenus();
+  if (!willOpen) return;
+  menu.classList.remove("dropdown-menu-align-left");
+  menu.hidden = false;
+  if (menu.getBoundingClientRect().left < 8) menu.classList.add("dropdown-menu-align-left");
+}
+
 function closeAllMenus(exceptMenu) {
   document.querySelectorAll(".dropdown-menu:not([hidden])").forEach((menu) => {
     if (menu !== exceptMenu) menu.hidden = true;
@@ -605,10 +700,7 @@ document.getElementById("jobs").addEventListener("click", async (e) => {
   if (!btn) return;
 
   if (btn.dataset.action === "toggle-menu") {
-    const menu = btn.nextElementSibling;
-    const willOpen = menu.hidden;
-    closeAllMenus();
-    menu.hidden = !willOpen;
+    toggleMenu(btn.nextElementSibling);
     return;
   }
   closeAllMenus();
@@ -1252,6 +1344,7 @@ document.addEventListener("keydown", (e) => {
   }
   if (!jobModalOverlay.hidden) closeJobModal();
   if (!detailModalOverlay.hidden) closeDetailModal();
+  if (!settingsModalOverlay.hidden) closeSettingsModal();
   closeAllMenus();
 });
 document.addEventListener("click", (e) => {
@@ -1262,10 +1355,7 @@ document.getElementById("new-job-menu").addEventListener("click", (e) => {
   if (!btn) return;
 
   if (btn.dataset.action === "toggle-menu") {
-    const menu = btn.nextElementSibling;
-    const willOpen = menu.hidden;
-    closeAllMenus();
-    menu.hidden = !willOpen;
+    toggleMenu(btn.nextElementSibling);
     return;
   }
   closeAllMenus();
@@ -1329,5 +1419,172 @@ function tickCountdowns() {
 }
 setInterval(tickCountdowns, 1000);
 
+// ----- Onde guardar os backups ----------------------------------------------------------------
+
+const settingsModalOverlay = document.getElementById("settings-modal-overlay");
+const settingsForm = document.getElementById("settings-form");
+const settingsError = document.getElementById("settings-error");
+let settingsPoll = null;
+
+/** Encurta a pasta pessoal pra "~" (macOS /Users/x, Linux /home/x). */
+function shortenPath(p) {
+  return p.replace(/^\/(Users|home)\/[^/]+(?=\/|$)/, "~");
+}
+
+/** Pasta como o usuario a enxerga no proprio computador (no Docker, a pasta do host). */
+function displayBackupDir(settings) {
+  const p = settings.backupDirOnHost || settings.backupDir;
+  return p ? shortenPath(p) : null;
+}
+
+async function loadSettings() {
+  try {
+    state.settings = await apiFetch("/api/settings");
+  } catch {
+    return; // config com problema: o card de erro dos jobs ja explica
+  }
+  renderSummary();
+  if (state.jobs.length === 0) render();
+  if (!settingsModalOverlay.hidden) renderSettingsModal();
+  watchMove();
+}
+
+function totalBackupBytes() {
+  return state.jobs.reduce((sum, j) => sum + (j.totalSize || 0), 0);
+}
+
+function renderSettingsModal() {
+  const s = state.settings;
+  if (!s) return;
+  document.getElementById("settings-current").textContent = displayBackupDir(s) || "pasta do container";
+  const meta = [];
+  if (state.jobs.length) meta.push(`${formatBytes(totalBackupBytes())} em backups`);
+  if (s.freeBytes != null) meta.push(`${formatBytes(s.freeBytes)} livres neste disco`);
+  document.getElementById("settings-current-meta").textContent = meta.join(" · ");
+
+  document.getElementById("settings-editable").hidden = s.docker;
+  document.getElementById("settings-docker").hidden = !s.docker;
+  document.getElementById("settings-save").hidden = s.docker;
+
+  const chips = document.getElementById("settings-suggestions");
+  chips.innerHTML = (s.suggestions || [])
+    .map(
+      (p) =>
+        `<button type="button" class="btn btn-sm" data-suggestion="${escapeHtml(p)}" title="${escapeHtml(p)}">${icon(
+          p.startsWith("/Volumes/") ? "drive" : "folder",
+        )}<span>${escapeHtml(shortenPath(p))}</span></button>`,
+    )
+    .join("");
+
+  const own = s.jobsWithOwnDir || [];
+  const ownHint = document.getElementById("settings-own-dir-hint");
+  ownHint.hidden = own.length === 0;
+  ownHint.textContent = own.length
+    ? `${own.join(", ")} ${own.length === 1 ? "tem pasta própria" : "têm pasta própria"} no config.yaml e não muda${own.length === 1 ? "" : "m"} de lugar.`
+    : "";
+
+  const total = totalBackupBytes();
+  document.getElementById("settings-move-row").hidden = total === 0;
+  document.getElementById("settings-move-hint").textContent = total
+    ? `${formatBytes(total)} serão movidos. Se a pasta nova for em outro disco, isso pode levar alguns minutos — o painel continua funcionando.`
+    : "";
+
+  const status = document.getElementById("settings-move-status");
+  const m = s.move;
+  if (m && m.running) {
+    status.textContent = `Movendo backups… ${m.filesDone} de ${m.filesTotal} arquivo(s)`;
+    status.hidden = false;
+  } else if (m && m.error) {
+    status.textContent = `A mudança parou com erro: ${m.error}`;
+    status.hidden = false;
+  } else {
+    status.hidden = true;
+  }
+}
+
+function openSettingsModal() {
+  closeAllMenus();
+  settingsForm.reset();
+  settingsError.hidden = true;
+  renderSettingsModal();
+  settingsModalOverlay.hidden = false;
+  if (state.settings && !state.settings.docker) document.getElementById("settings-dir").focus();
+  loadSettings(); // espaco livre e sugestoes (ex: HD externo recem-conectado) atualizados
+}
+
+function closeSettingsModal() {
+  settingsModalOverlay.hidden = true;
+}
+
+/** Enquanto houver uma mudanca de pasta em andamento, acompanha o progresso. */
+function watchMove() {
+  const running = state.settings && state.settings.move && state.settings.move.running;
+  if (running && !settingsPoll) {
+    settingsPoll = setInterval(loadSettings, 1500);
+  } else if (!running && settingsPoll) {
+    clearInterval(settingsPoll);
+    settingsPoll = null;
+    const m = state.settings.move;
+    showToast(m.error ? `Erro ao mover os backups: ${m.error}` : "Backups movidos para a nova pasta.", Boolean(m.error));
+    if (!m.error) closeSettingsModal();
+    loadJobs();
+  }
+}
+
+document.getElementById("settings-btn").addEventListener("click", openSettingsModal);
+settingsModalOverlay.addEventListener("click", (e) => {
+  if (e.target === settingsModalOverlay || e.target.closest('[data-action="close-settings"]')) closeSettingsModal();
+  const chip = e.target.closest("[data-suggestion]");
+  if (chip) {
+    const input = document.getElementById("settings-dir");
+    input.value = chip.dataset.suggestion;
+    input.focus();
+  }
+});
+
+settingsForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  settingsError.hidden = true;
+  const backupDir = settingsForm.elements.backupDir.value.trim();
+  if (!backupDir) {
+    settingsError.textContent = "Informe a pasta nova (ou escolha uma das sugestões).";
+    settingsError.hidden = false;
+    return;
+  }
+  const saveBtn = document.getElementById("settings-save");
+  saveBtn.disabled = true;
+  try {
+    const res = await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ backupDir, moveExisting: settingsForm.elements.moveExisting.checked }),
+    });
+    const body = await res.json();
+    if (!res.ok) throw new Error(body.error || `Erro ${res.status}`);
+    state.settings = body;
+    if (res.status === 202) {
+      showToast("Pasta alterada. Movendo os backups em segundo plano…");
+      renderSettingsModal();
+      watchMove();
+    } else {
+      showToast("Pasta dos backups alterada.");
+      closeSettingsModal();
+    }
+    await loadJobs();
+    renderSummary();
+  } catch (err) {
+    settingsError.textContent = err.message;
+    settingsError.hidden = false;
+  } finally {
+    saveBtn.disabled = false;
+  }
+});
+
+// Os links "salvos em <pasta>" (resumo e tela vazia) sao recriados a cada render: delega o clique.
+document.addEventListener("click", (e) => {
+  if (e.target.closest('[data-action="open-settings"]')) openSettingsModal();
+});
+
 loadJobs();
 loadCronStatus();
+loadSettings();

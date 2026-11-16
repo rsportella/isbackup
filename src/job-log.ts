@@ -6,12 +6,76 @@ function timestamp(): string {
   return new Date().toISOString();
 }
 
+/** Acima desse tamanho, logs/<job>.log vira logs/<job>.log.1 (o .1 anterior e descartado). */
+export const LOG_ROTATE_BYTES = 1024 * 1024; // 1 MB
+
+/**
+ * Rotacao simples (uma geracao): sem isso o log de cada job cresce pra sempre — um job de hora
+ * em hora acumula centenas de KB por mes. Mantem o arquivo atual + o anterior (.1), o suficiente
+ * pro Historico da UI e pra investigar uma falha recente.
+ */
+function rotateIfNeeded(file: string): void {
+  let size: number;
+  try {
+    size = fs.statSync(file).size;
+  } catch {
+    return; // ainda nao existe
+  }
+  if (size < LOG_ROTATE_BYTES) return;
+  // Dois processos (cron + UI) podem tentar rotacionar juntos; rename e atomico, e se o outro
+  // ja rotacionou este rename so falha — tudo bem.
+  try {
+    fs.renameSync(file, `${file}.1`);
+  } catch {
+    // ignora
+  }
+}
+
 function appendToFile(logDir: string, jobName: string, line: string): void {
   try {
     fs.mkdirSync(logDir, { recursive: true });
-    fs.appendFileSync(path.join(logDir, `${jobName}.log`), line + "\n");
+    const file = path.join(logDir, `${jobName}.log`);
+    rotateIfNeeded(file);
+    fs.appendFileSync(file, line + "\n");
   } catch {
     // Um problema pra escrever o log (disco cheio, permissao) nunca deve derrubar o backup em si.
+  }
+}
+
+/**
+ * Le so as ultimas `maxLines` linhas do arquivo, a partir do fim, sem carregar o arquivo inteiro
+ * na memoria (o Historico da UI pede isso a cada abertura). Le blocos de tras pra frente ate
+ * juntar linhas suficientes ou chegar no inicio.
+ */
+export function readLastLines(file: string, maxLines: number, chunkBytes = 64 * 1024): string[] {
+  let fd: number;
+  try {
+    fd = fs.openSync(file, "r");
+  } catch {
+    return [];
+  }
+  try {
+    const size = fs.fstatSync(fd).size;
+    let position = size;
+    let buffer = Buffer.alloc(0);
+    let newlines = 0;
+
+    while (position > 0 && newlines <= maxLines) {
+      const readSize = Math.min(chunkBytes, position);
+      position -= readSize;
+      const chunk = Buffer.alloc(readSize);
+      fs.readSync(fd, chunk, 0, readSize, position);
+      buffer = Buffer.concat([chunk, buffer]);
+      for (const byte of chunk) if (byte === 0x0a) newlines += 1;
+    }
+
+    const lines = buffer.toString("utf8").split("\n").filter(Boolean);
+    // Se parou no meio do arquivo, a primeira linha do buffer pode estar cortada (ou ter um
+    // caractere UTF-8 partido) — descarta ela.
+    if (position > 0) lines.shift();
+    return lines.slice(-maxLines);
+  } finally {
+    fs.closeSync(fd);
   }
 }
 

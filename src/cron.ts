@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import type { JobConfig } from "./types.js";
@@ -35,13 +36,54 @@ export interface CronContext {
   logDir: string;
 }
 
+// Links estaveis que gerenciadores de pacote mantem apontando pra versao atual do node.
+const STABLE_NODE_LINKS = ["/opt/homebrew/bin/node", "/usr/local/bin/node"];
+
+/**
+ * Caminho do node pra gravar no crontab. process.execPath vem resolvido pro diretorio versionado
+ * do Homebrew (ex: /opt/homebrew/Cellar/node/26.5.0/bin/node), que some no proximo
+ * `brew upgrade node` — e todos os backups do cron passariam a falhar sem nenhum aviso. Se houver
+ * um link estavel apontando pro mesmo binario, usa ele no lugar.
+ */
+export function stableNodePath(execPath: string = process.execPath): string {
+  let realExec: string;
+  try {
+    realExec = fs.realpathSync(execPath);
+  } catch {
+    return execPath;
+  }
+  for (const link of STABLE_NODE_LINKS) {
+    try {
+      if (link !== execPath && fs.realpathSync(link) === realExec) return link;
+    } catch {
+      // link nao existe nesta maquina
+    }
+  }
+  return execPath;
+}
+
+/**
+ * Argumento seguro pra linha de comando do crontab. Caminhos "comuns" ficam como estao (a linha
+ * continua legivel e igual a de antes); qualquer outro caractere (espaco, aspas, ";"...) vai entre
+ * aspas simples. "%" precisa de "\" em qualquer lugar: no crontab ele vira quebra de linha.
+ */
+export function cronShellArg(value: string): string {
+  if (/^[A-Za-z0-9_\/.:=@+-]+$/.test(value)) return value;
+  return `'${value.replace(/'/g, `'\\''`)}'`.replace(/%/g, "\\%");
+}
+
 function jobCronLine(job: JobConfig, ctx: CronContext): string {
   const cronExpr = resolveSchedule(job.schedule);
   const cliPath = path.join(ctx.projectRoot, "dist", "cli.js");
   // Sem redirecionamento de log aqui: o proprio "isbackup run" ja grava em logs/<job>.log
   // diretamente (job-log.ts), do mesmo jeito que um run disparado pela UI ou pelo self-heal —
   // redirecionar o shell tambem pro mesmo arquivo duplicaria cada linha.
-  const command = `${process.execPath} ${cliPath} run ${job.name} --config ${ctx.configPath}`;
+  let command = [stableNodePath(), cliPath, "run", job.name, "--config", ctx.configPath].map(cronShellArg).join(" ");
+  // O cron roda os comandos com um ambiente minimo: se a pasta de dados foi definida por
+  // ISBACKUP_HOME (ex: na imagem Docker), ela precisa ir junto na linha, senao o job procuraria o
+  // .env (chave das senhas) e os logs na pasta do codigo.
+  const dataHome = process.env.ISBACKUP_HOME;
+  if (dataHome) command = `ISBACKUP_HOME=${cronShellArg(path.resolve(dataHome))} ${command}`;
   return `${cronExpr} ${command} # isbackup:${job.name}`;
 }
 

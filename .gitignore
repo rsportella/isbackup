@@ -12,3 +12,9 @@ config.yaml
 .DS_Store
 *.tar.gz
 *.log
+
+# Dados do container (docker compose)
+docker-data/
+
+# Escolhas locais do ./docker.sh (pasta dos dados)
+docker.local.env
