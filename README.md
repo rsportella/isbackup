@@ -302,9 +302,17 @@ isbackup init                      # cria config.yaml e .env a partir dos exempl
   na linha de comando, onde apareceriam no `ps aux`.
 - **Backups** são gravados com permissão `600`. Eles **não são cifrados**: se o conteúdo for
   sensível, use um disco ou volume cifrado no destino.
-- **O painel não tem login.** Ele só escuta em `127.0.0.1` (no Docker, a porta é publicada só em
-  `127.0.0.1` do seu computador), então só a própria máquina acessa.
-  **Não exponha a porta na rede** (proxy reverso, túnel) sem colocar autenticação na frente.
+- **O painel não tem login, mas só atende a própria máquina.** Ele escuta só em `127.0.0.1` (no
+  Docker, a porta é publicada só em `127.0.0.1` do seu computador) e, além disso, recusa:
+  - pedidos endereçados a qualquer nome que não seja `127.0.0.1`, `localhost` ou `[::1]` —
+    bloqueia o *DNS rebinding*, em que um site malicioso aponta o próprio domínio para a sua
+    máquina para ler a API e baixar backups;
+  - pedidos que o navegador marca como vindos de outro site, e ações (POST/PUT/DELETE) com origem
+    diferente da do painel — um site aberto em outra aba não consegue rodar, pausar ou remover rotinas.
+
+  Mesmo assim, **não exponha a porta na rede** (proxy reverso, túnel) sem colocar autenticação na
+  frente. Se precisar acessar por outro nome (ex: `backup.lan` atrás de um proxy com login), libere-o em
+  `ISBACKUP_ALLOWED_HOSTS=backup.lan`.
 
 ## Boas práticas
 
